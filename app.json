@@ -1,0 +1,23 @@
+{
+  "name": "SILA MD WhatsApp Bot",
+  "description": "Multi-device WhatsApp Bot by SILA",
+  "repository": "https://github.com/SILA/SILA-MD-s1",
+  "logo": "https://files.catbox.moe/90i7j4.png",
+  "keywords": ["whatsapp", "bot", "multi-device", "baileys"],
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "env": {
+    "NPM_CONFIG_LEGACY_PEER_DEPS": {
+      "description": "Fix npm peer dependency conflicts",
+      "value": "true"
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1
+    }
+  }
+}
