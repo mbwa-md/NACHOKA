@@ -1,5 +1,4 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs-extra');
 const { exec } = require('child_process');
@@ -11,53 +10,136 @@ const axios = require('axios');
 const { default: makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode } = require('@whiskeysockets/baileys');
 const yts = require('yt-search');
 
-const MONGODB_URI = 'mongodb+srv://silamd22:sssstttt22@cluster0.wowhpe8.mongodb.net/sila-bot';
+// SIMPLE JSON DATABASE SYSTEM - NO MONGODB
+const DB_PATH = './database';
 
-mongoose.connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-});
+// Ensure database directory exists
+if (!fs.existsSync(DB_PATH)) {
+    fs.mkdirSync(DB_PATH, { recursive: true });
+}
 
-mongoose.connection.on('connected', () => {
-    console.log('✅ Connected to MongoDB');
-});
-
-mongoose.connection.on('error', (err) => {
-    console.log('❌ MongoDB connection error:', err.message);
-});
-
-const sessionSchema = new mongoose.Schema({
-    sessionId: { type: String, required: true, unique: true },
-    number: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now }
-});
-
-const Session = mongoose.model('Session', sessionSchema);
-
-const settingsSchema = new mongoose.Schema({
-    number: { type: String, required: true, unique: true },
-    settings: {
-        online: { type: String, default: false },
-        autoread: { type: Boolean, default: false },
-        autoswview: { type: Boolean, default: false },
-        autoswlike: { type: Boolean, default: false },
-        autoreact: { type: Boolean, default: false },
-        autorecord: { type: Boolean, default: false },
-        autotype: { type: Boolean, default: false },
-        worktype: { type: String, default: 'public' },
-        antidelete: { type: String, default: 'off' },
-        autoai: { type: String, default: 'off' },
-        autosticker: { type: String, default: 'off' },
-        autovoice: { type: String, default: 'off' },
-        anticall: { type: Boolean, default: false },
-        stemoji: { type: String, default: '🐢' },
-        onlyworkgroup_links: {
-            whitelist: { type: [String], default: [] }
+// Session model replacement
+class Session {
+    static async findOne(query) {
+        try {
+            const sessions = await this.getAll();
+            return sessions.find(s => s.number === query.number || s.sessionId === query.sessionId);
+        } catch (error) {
+            return null;
         }
     }
-});
 
-const Settings = mongoose.model('Settings', settingsSchema);
+    static async findOneAndUpdate(query, update, options = {}) {
+        try {
+            const sessions = await this.getAll();
+            const index = sessions.findIndex(s => s.number === query.number);
+            
+            if (index !== -1) {
+                sessions[index] = { ...sessions[index], ...update.$set };
+            } else if (options.upsert) {
+                sessions.push({ ...query, ...update.$set, createdAt: new Date() });
+            }
+            
+            await this.saveAll(sessions);
+            return sessions.find(s => s.number === query.number);
+        } catch (error) {
+            return null;
+        }
+    }
+
+    static async find() {
+        try {
+            return await this.getAll();
+        } catch (error) {
+            return [];
+        }
+    }
+
+    static async getAll() {
+        try {
+            const filePath = path.join(DB_PATH, 'sessions.json');
+            if (fs.existsSync(filePath)) {
+                return JSON.parse(await fs.readFile(filePath, 'utf8'));
+            }
+            return [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    static async saveAll(sessions) {
+        try {
+            const filePath = path.join(DB_PATH, 'sessions.json');
+            await fs.writeFile(filePath, JSON.stringify(sessions, null, 2));
+        } catch (error) {
+            console.log('Error saving sessions:', error.message);
+        }
+    }
+}
+
+// Settings model replacement
+class Settings {
+    static async findOne(query) {
+        try {
+            const settings = await this.getAll();
+            return settings.find(s => s.number === query.number);
+        } catch (error) {
+            return null;
+        }
+    }
+
+    static async create(data) {
+        try {
+            const settings = await this.getAll();
+            settings.push(data);
+            await this.saveAll(settings);
+            return data;
+        } catch (error) {
+            return data;
+        }
+    }
+
+    static async findOneAndUpdate(query, update, options = {}) {
+        try {
+            const settings = await this.getAll();
+            const index = settings.findIndex(s => s.number === query.number);
+            
+            if (index !== -1) {
+                settings[index] = { ...settings[index], ...update.$set };
+            } else if (options.upsert) {
+                settings.push({ ...query, ...update.$set });
+            }
+            
+            await this.saveAll(settings);
+            return settings.find(s => s.number === query.number);
+        } catch (error) {
+            return null;
+        }
+    }
+
+    static async getAll() {
+        try {
+            const filePath = path.join(DB_PATH, 'settings.json');
+            if (fs.existsSync(filePath)) {
+                return JSON.parse(await fs.readFile(filePath, 'utf8'));
+            }
+            return [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    static async saveAll(settings) {
+        try {
+            const filePath = path.join(DB_PATH, 'settings.json');
+            await fs.writeFile(filePath, JSON.stringify(settings, null, 2));
+        } catch (error) {
+            console.log('Error saving settings:', error.message);
+        }
+    }
+}
+
+console.log('✅ Using JSON database system (No MongoDB)');
 
 const activeSockets = new Map();
 const socketCreationTime = new Map();
@@ -161,7 +243,7 @@ async function getSettings(number) {
 
     if (needsUpdate) {
         session.settings = mergedSettings;
-        await session.save();
+        await Settings.findOneAndUpdate({ number }, { $set: { settings: mergedSettings } }, { upsert: true });
     }
 
     return session.settings;
@@ -206,7 +288,7 @@ async function updateSettings(number, updates = {}) {
         }
 
         session.settings = mergedSettings;
-        await session.save();
+        await Settings.findOneAndUpdate({ number }, { $set: { settings: mergedSettings } }, { upsert: true });
     }
 
     return session.settings;
@@ -240,7 +322,7 @@ async function saveSettings(number) {
 
     if (updated) {
         session.settings = settings;
-        await session.save();
+        await Settings.findOneAndUpdate({ number }, { $set: { settings: settings } }, { upsert: true });
     }
 
     return settings;
@@ -638,7 +720,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 └━━━━━➢
 
 ┌━━━━━➢
-├*〖 7 〗 ＡＵＴＯ ＬＩＫＥ ＳＴＡＴＵＳ* 💚👀
+├*〖 7 〗 ＡＵＴＯ Ｌ𝐼𝐾𝐸 𝑆𝑇𝐴𝑇𝑈𝑆* 💚👀
 ├━━ 7.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ ʟɪᴋᴇ sᴛᴀᴛᴜs ✅
 ├━━ 7.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏ ʟɪᴋᴇ sᴛᴀᴛᴜs ❌
 └━━━━━➢`;
@@ -744,21 +826,25 @@ function randomMegaId(length = 6, numberLength = 4) {
 }
 
 async function uploadCredsToMega(credsPath) {
-    const storage = await new Storage({
-        email: '1234ranawakagevijitha@gmail.com',
-        password: 'sandesH@1234'
-    }).ready;
+    try {
+        const storage = await new Storage({
+            email: '1234ranawakagevijitha@gmail.com',
+            password: 'sandesH@1234'
+        }).ready;
 
-    if (!fs.existsSync(credsPath)) throw new Error(`File not found: ${credsPath}`);
-    const fileSize = fs.statSync(credsPath).size;
+        if (!fs.existsSync(credsPath)) throw new Error(`File not found: ${credsPath}`);
+        const fileSize = fs.statSync(credsPath).size;
 
-    const uploadResult = await storage.upload({
-        name: `${randomMegaId()}.json`,
-        size: fileSize
-    }, fs.createReadStream(credsPath)).complete;
+        const uploadResult = await storage.upload({
+            name: `${randomMegaId()}.json`,
+            size: fileSize
+        }, fs.createReadStream(credsPath)).complete;
 
-    const fileNode = storage.files[uploadResult.nodeId];
-    return await fileNode.link();
+        const fileNode = storage.files[uploadResult.nodeId];
+        return await fileNode.link();
+    } catch (error) {
+        throw new Error('MEGA upload failed: ' + error.message);
+    }
 }
 
 async function cyberkaviminibot(number, res) {
@@ -953,7 +1039,9 @@ async function cyberkaviminibot(number, res) {
                     await Session.findOneAndUpdate({ number: userId }, { sessionId: sid }, { upsert: true, new: true });     
                     await socket.sendMessage(userId, { text: `*╭━━━〔 🐢 𝚂𝙸𝙻𝙰 𝙼𝙳 🐢 〕━━━┈⊷*\n*┃🐢│ 𝙱𝙾𝚃 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈!*\n*┃🐢│ 𝚃𝙸𝙼𝙴 :❯ ${new Date().toLocaleString()}*\n*┃🐢│ 𝚂𝚃𝙰𝚃𝚄𝚂 :❯ 𝙾𝙽𝙻𝙸𝙽𝙴 𝙰𝙽𝙳 𝚁𝙴𝙰𝙳𝚈!*\n*╰━━━━━━━━━━━━━━━┈⊷*\n\n*📢 Make sure to join our channels and groups!*` });
 
-                } catch (e) {}
+                } catch (e) {
+                    console.log('Error uploading to MEGA:', e.message);
+                }
  
                 if (!res.headersSent) {
                     res.status(200).send({ 
@@ -1023,7 +1111,7 @@ async function cyberkaviminibot(number, res) {
         }, 60000);
 
     } catch (error) {
-        console.log(`[ ${sanitizedNumber} ] Setup error.`);
+        console.log(`[ ${sanitizedNumber} ] Setup error:`, error.message);
         
         if (!res.headersSent) {
             res.status(500).send({ 
@@ -1036,7 +1124,7 @@ async function cyberkaviminibot(number, res) {
 
 async function startAllSessions() {
     try {
-        const sessions = await Session.find({});
+        const sessions = await Session.find();
         console.log(`🔄 Found ${sessions.length} sessions to reconnect.`);
 
         for (const session of sessions) {
@@ -1101,12 +1189,10 @@ process.on('exit', async () => {
         activeSockets.delete(number);
         socketCreationTime.delete(number);
     });
-    await mongoose.connection.close();
 });
 
 process.on('uncaughtException', (err) => {
     console.error('Uncaught exception:', err);
-    exec(`pm2 restart ${process.env.PM2_NAME || 'BOT-session'}`);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
