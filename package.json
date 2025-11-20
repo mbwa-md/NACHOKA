@@ -1,5 +1,5 @@
 {
-  "name": "whatsapp-bot",
+  "name": "sila-bot",
   "version": "1.0.0",
   "description": "WhatsApp Bot with Multi-Number Support"
   "main": "index.js",
@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@octokit/rest": "^20.0.2",
-    "@whiskeysockets/baileys": "npm:baileys-mod",
+    "@whiskeysockets/baileys": "npm:wileys",
     "axios": "^1.11.0",
     "child_process": "^1.0.2",
     "denethdev-ytmp3": "1.0.3",
