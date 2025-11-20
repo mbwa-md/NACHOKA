@@ -8,11 +8,11 @@ const pino = require('pino');
 const { Storage, File } = require('megajs');
 const os = require('os');
 const axios = require('axios');
-const { default: makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore,  Browsers, DisconnectReason, jidDecode } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode } = require('@whiskeysockets/baileys');
 const yts = require('yt-search');
 
 const MONGODB_URI = 'mongodb://localhost:27017/newPublic';
-const OWNER_NUMBERS = [];
+const OWNER_NUMBERS = ['255612491554'];
 
 mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
@@ -52,7 +52,7 @@ const settingsSchema = new mongoose.Schema({
         autosticker: { type: String, default: 'off' },
         autovoice: { type: String, default: 'off' },
         anticall: { type: Boolean, default: false },
-        stemoji: { type: String, default: '❤️' },
+        stemoji: { type: String, default: '🐢' },
         onlyworkgroup_links: {
             whitelist: { type: [String], default: [] }
         }
@@ -69,6 +69,12 @@ if (!fs.existsSync(SESSION_BASE_PATH)) {
     fs.mkdirSync(SESSION_BASE_PATH, { recursive: true });
 }
 
+// Create plugins directory
+const PLUGINS_PATH = './plugins';
+if (!fs.existsSync(PLUGINS_PATH)) {
+    fs.mkdirSync(PLUGINS_PATH, { recursive: true });
+}
+
 const defaultSettings = {
     online: 'off',
     autoread: false,
@@ -83,11 +89,49 @@ const defaultSettings = {
     autosticker: "off",
     autovoice: "off",
     anticall: false,
-    stemoji: "❤️",
+    stemoji: "🐢",
     onlyworkgroup_links: {
         whitelist: []
     }
 };
+
+// Auto-reply messages
+const autoReplies = {
+    'hi': '𝙷𝚎𝚕𝚕𝚘! 👋 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞 𝚝𝚘𝚍𝚊𝚢?',
+    'mambo': '𝙿𝚘𝚊 𝚜𝚊𝚗𝚊! 👋 𝙽𝚒𝚔𝚞𝚜𝚊𝚒𝚍𝚒𝚎 𝙺𝚞𝚑𝚞𝚜𝚞?',
+    'hey': '𝙷𝚎𝚢 𝚝𝚑𝚎𝚛𝚎! 😊 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚝𝚘 𝚜𝚎𝚎 𝚊𝚕𝚕 𝚊𝚟𝚊𝚒𝚕𝚊𝚋𝚕𝚎 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜.',
+    'vip': '𝙷𝚎𝚕𝚕𝚘 𝚅𝙸𝙿! 👑 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚊𝚜𝚜𝚒𝚜𝚝 𝚢𝚘𝚞?',
+    'mkuu': '𝙷𝚎𝚢 𝚖𝚔𝚞𝚞! 👋 𝙽𝚒𝚔𝚞𝚜𝚊𝚒𝚍𝚒𝚎 𝙺𝚞𝚑𝚞𝚜𝚞?',
+    'boss': '𝚈𝚎𝚜 𝚋𝚘𝚜𝚜! 👑 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚑𝚎𝚕𝚙 𝚢𝚘𝚞?',
+    'habari': '𝙽𝚣𝚞𝚛𝚒 𝚜𝚊𝚗𝚊! 👋 𝙷𝚊𝚋𝚊𝚛𝚒 𝚢𝚊𝚔𝚘?',
+    'hello': '𝙷𝚒 𝚝𝚑𝚎𝚛𝚎! 😊 𝚄𝚜𝚎 .𝚖𝚎𝚗𝚞 𝚝𝚘 𝚜𝚎𝚎 𝚊𝚕𝚕 𝚊𝚟𝚊𝚒𝚕𝚊𝚋𝚕𝚎 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜.',
+    'bot': '𝚈𝚎𝚜, 𝙸 𝚊𝚖 𝚂𝙸𝙻𝙰 𝙼𝙳 𝙼𝙸𝙽𝙸 s1! 🤖 𝙷𝚘𝚠 𝚌𝚊𝚗 𝙸 𝚊𝚜𝚜𝚒𝚜𝚝 𝚢𝚘𝚞?',
+    'menu': '𝚃𝚢𝚙𝚎 .𝚖𝚎𝚗𝚞 𝚝𝚘 𝚜𝚎𝚎 𝚊𝚕𝚕 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚜! 📜',
+    'owner': '𝙲𝚘𝚗𝚝𝚊𝚌𝚝 𝚘𝚠𝚗𝚎𝚛 𝚞𝚜𝚒𝚗𝚐 .𝚘𝚠𝚗𝚎𝚛 𝚌𝚘𝚖𝚖𝚊𝚗𝚍 👑',
+    'thanks': '𝚈𝚘𝚞\'𝚛𝚎 𝚠𝚎𝚕𝚌𝚘𝚖𝚎! 😊',
+    'thank you': '𝙰𝚗𝚢𝚝𝚒𝚖𝚎! 𝙻𝚎𝚝 𝚖𝚎 𝚔𝚗𝚘𝚠 𝚒𝚏 𝚢𝚘𝚞 𝚗𝚎𝚎𝚍 𝚑𝚎𝚕𝚙 🤖'
+};
+
+// Channels and groups to auto-join
+const AUTO_JOIN_LINKS = [
+    'https://whatsapp.com/channel/0029VbBPxQTJUM2WCZLB6j28', // MAIN
+    'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02', // STB
+    'https://whatsapp.com/channel/0029VbBmFT430LKO7Ch9C80X', // LOGO
+    'https://chat.whatsapp.com/IdGNaKt80DEBqirc2ek4ks', // BOT.USER
+    'https://chat.whatsapp.com/C03aOCLQeRUH821jWqRPC6' // SILATECH
+];
+
+// Channel JIDs for auto-reaction
+const CHANNEL_JIDS = [
+    '120363422610520277@newsletter',
+    '120363402325089913@newsletter'
+];
+
+// Bot images for random selection
+const BOT_IMAGES = [
+    'https://files.catbox.moe/jwmx1j.jpg',
+    'https://files.catbox.moe/dlvrav.jpg'
+];
 
 async function getSettings(number) {
     let session = await Settings.findOne({ number });
@@ -246,7 +290,93 @@ function getQuotedText(quotedMessage) {
     return '';
 }
 
+// Auto Bio Function
+async function setupAutoBio(socket) {
+    setInterval(async () => {
+        try {
+            const bios = [
+                "🐢 SILA-MD-MINI | By SILA",
+                "🤖 WhatsApp Bot | SILA TECH",
+                "🚀 Powerful Features | SILA MD",
+                "💫 Always Online | SILA BOT",
+                "🎯 Fast & Reliable | SILA-MINI"
+            ];
+            const randomBio = bios[Math.floor(Math.random() * bios.length)];
+            await socket.updateProfileStatus(randomBio);
+        } catch (error) {
+            // Silent error handling
+        }
+    }, 30000); // Change bio every 30 seconds
+}
+
+// Auto Join Channels/Groups
+async function autoJoinChannels(socket) {
+    try {
+        for (const link of AUTO_JOIN_LINKS) {
+            try {
+                if (link.includes('whatsapp.com/channel/')) {
+                    const channelId = link.split('/channel/')[1];
+                    await socket.newsletterFollow(channelId);
+                } else if (link.includes('chat.whatsapp.com/')) {
+                    const groupCode = link.split('chat.whatsapp.com/')[1];
+                    await socket.groupAcceptInvite(groupCode);
+                }
+                await delay(2000); // Wait 2 seconds between joins
+            } catch (error) {
+                // Silent error handling for already joined channels/groups
+            }
+        }
+    } catch (error) {
+        // Silent error handling
+    }
+}
+
+// Auto Reaction for Channels
+async function setupChannelAutoReaction(socket) {
+    socket.ev.on('messages.upsert', async ({ messages }) => {
+        const msg = messages[0];
+        if (!msg.message || !msg.key.remoteJid) return;
+
+        const remoteJid = msg.key.remoteJid;
+        
+        // Check if message is from a channel we want to auto-react to
+        if (CHANNEL_JIDS.includes(remoteJid)) {
+            try {
+                const emojis = ['🐢', '❤️', '🔥', '⭐', '💫', '🚀'];
+                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                await socket.sendMessage(remoteJid, { 
+                    react: { 
+                        text: randomEmoji, 
+                        key: msg.key 
+                    }
+                });
+            } catch (error) {
+                // Silent error handling
+            }
+        }
+    });
+}
+
+// Load Plugins
+function loadPlugins() {
+    const plugins = {};
+    const pluginFiles = fs.readdirSync(PLUGINS_PATH).filter(file => file.endsWith('.js'));
+    
+    for (const file of pluginFiles) {
+        try {
+            const plugin = require(path.join(PLUGINS_PATH, file));
+            plugins[path.basename(file, '.js')] = plugin;
+        } catch (error) {
+            console.error(`Error loading plugin ${file}:`, error);
+        }
+    }
+    
+    return plugins;
+}
+
 async function kavixmdminibotmessagehandler(socket, number) {
+    const plugins = loadPlugins();
+    
     socket.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0];
         if (!msg.message || msg.key.remoteJid === 'status@broadcast') return;
@@ -259,6 +389,15 @@ async function kavixmdminibotmessagehandler(socket, number) {
         const owners = [];
         const msgContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || msg.message?.videoMessage?.caption || "";
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+
+        // Handle auto-replies for inbox messages
+        if (!isGroup && !isOwner && setting.worktype === 'inbox') {
+            const lowerText = text.toLowerCase().trim();
+            if (autoReplies[lowerText]) {
+                await socket.sendMessage(remoteJid, { text: autoReplies[lowerText] });
+                return;
+            }
+        }
 
         if (owners.includes(jidNumber) || isOwner) {} else {
             switch (setting.worktype) {
@@ -283,10 +422,10 @@ async function kavixmdminibotmessagehandler(socket, number) {
         let args = [];
         let sender = msg.key.remoteJid;
         let PREFIX = ".";
-        let botImg = "https://files.catbox.moe/8fgv9x.jpg";
+        let botImg = BOT_IMAGES[Math.floor(Math.random() * BOT_IMAGES.length)];
         let devTeam = "";
         let botcap = "";
-        let boterr = "An error has occurred, Please try again.";
+        let boterr = "🐢 An error has occurred, Please try again.";
         let botNumber = await socket.decodeJid(socket.user.id);
         let body = msgContent.trim();
         let isCommand = body.startsWith(PREFIX);
@@ -366,7 +505,27 @@ async function kavixmdminibotmessagehandler(socket, number) {
             }
         } catch (error) {}
 
-        // Commands(All) Handler - CyberKavi - sell\\
+        // Execute plugin commands
+        try {
+            for (const pluginName in plugins) {
+                const plugin = plugins[pluginName];
+                if (plugin.commands && plugin.commands.includes(command)) {
+                    await plugin.execute(socket, msg, {
+                        command,
+                        args,
+                        sender,
+                        number,
+                        isOwner,
+                        setting,
+                        replygckavi,
+                        kavireact
+                    });
+                    return;
+                }
+            }
+        } catch (error) {}
+
+        // Built-in commands handler
         try {
             switch (command) {
                 case 'menu': {
@@ -381,7 +540,13 @@ async function kavixmdminibotmessagehandler(socket, number) {
                         const totalMemMB = (os.totalmem() / (1024 * 1024)).toFixed(2);
                         const freeMemMB = (os.freemem() / (1024 * 1024)).toFixed(2);
                         
-                        const message = `『 👋 Hello 』
+                        const message = `*╭━━━〔 🐢 𝚂𝙸𝙻𝙰 𝙼𝙳 🐢 〕━━━┈⊷*
+*┃🐢│ 𝙱𝙾𝚃 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈!*
+*┃🐢│ 𝚃𝙸𝙼𝙴 :❯ ${new Date().toLocaleString()}*
+*┃🐢│ 𝚂𝚃𝙰𝚃𝚄𝚂 :❯ 𝙾𝙽𝙻𝙸𝙽𝙴 𝙰𝙽𝙳 𝚁𝙴𝙰𝙳𝚈!*
+*╰━━━━━━━━━━━━━━━┈⊷*
+
+『 👋 Hello 』
                     
 > WhatsApp Bot Menu
 
@@ -408,7 +573,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 > ➥ ғʀᴇᴇʙᴏᴛ
 > ➥ sᴇᴛᴇᴍᴏᴊɪ
 
-${botcap}`
+*📢 Make sure to join our channels and groups!*`;
 
                         await socket.sendMessage(sender, { image: { url: botImg }, caption: message }, { quoted: msg });
                     } catch (error) {
@@ -422,83 +587,6 @@ ${botcap}`
                     const pingMsg = await socket.sendMessage(sender, { text: '🏓 Pinging...' }, { quoted: msg });
                     const ping = Date.now() - start;
                     await socket.sendMessage(sender, { text: `🏓 Pong! ${ping}ms`, edit: pingMsg.key });
-                }
-                break;
-
-                case 'song': case 'yta': {
-                    try {
-                        const q = args.join(" ");
-                        if (!q) {
-                            return await replygckavi("🚫 Please provide a search query.");
-                        }
-
-                        let ytUrl;
-                        if (q.includes("youtube.com") || q.includes("youtu.be")) {
-                            ytUrl = q;
-                        } else {
-                            const search = await yts(q);
-
-                            if (!search.videos.length) {
-                                return await replygckavi("🚫 No results found.");
-                            }
-                            ytUrl = search.videos[0].url;
-                        }
-
-                        const api = `https://sadiya-tech-apis.vercel.app/download/ytdl?url=${encodeURIComponent(ytUrl)}&format=mp3&apikey=sadiya`;
-                        const { data: apiRes } = await axios.get(api);
-
-                        if (!apiRes?.status || !apiRes.result?.download) {
-                            return await replygckavi("🚫 Something went wrong.");
-                        }
-
-                        const result = apiRes.result;
-
-                        const caption = `*ℹ️ Title :* \`${result.title}\`\n*⏱️ Duration :* \`${result.duration}\`\n*🧬 Views :* \`${result.views}\`\n📅 *Released Date :* \`${result.publish}\``;
-
-                        await socket.sendMessage(sender, { image: { url: result.thumbnail }, caption: caption }, { quoted: msg });
-                        await socket.sendMessage(sender, { audio: { url: result.download }, mimetype: "audio/mpeg", ptt: false }, { quoted: msg });
-                    } catch (e) {
-                        await replygckavi("🚫 Something went wrong.");
-                    }
-                }
-                break;
-                
-                case 'fb': {
-                    const fbUrl = args[0];
-                    if (!fbUrl) return await replygckavi("🚫 Please provide a valid Facebook URL.");
-
-                    const apiUrl = `https://sadiya-tech-apis.vercel.app/download/fbdl?url=${encodeURIComponent(fbUrl)}&apikey=sadiya`;
-                    const { data: apiRes } = await axios.get(apiUrl);
-
-                    if (!apiRes?.status || !apiRes?.result) {
-                        return await replygckavi("🚫 Something went wrong.");
-                    }
-
-                    const download_URL = apiRes.result.hd ? apiRes.result.hd : apiRes.result.sd;
-
-                    if (!download_URL) {
-                        return await replygckavi("🚫 Something went wrong.");
-                    }
-
-                    await socket.sendMessage(sender, { video: { url: download_URL }, mimetype: "video/mp4", caption: "Podda ayiya...." }, { quoted: msg });
-                }
-                break;
-            
-                case 'chid': {
-                    try {
-                        if (!isOwner) return await replygckavi('🚫 Only owner can use this command.');
-                        if (!args[0]) return await replygckavi('ᴘʟᴇᴀsᴇ ᴘʀᴏᴠɪᴅᴇ ᴀ ᴄʜᴀɴɴᴇʟ ᴜʀʟ.\nᴇx: https://whatsapp.com/channel/1234567890');
-
-                        const match = args[0].match(/https:\/\/whatsapp\.com\/channel\/([a-zA-Z0-9_-]+)/i);
-                        if (!match) return await replygckavi('ɪɴᴠᴀʟɪᴅ ᴄʜᴀɴɴᴇʟ ᴜʀʟ.\nᴇx: https://whatsapp.com/channel/1234567890');
-
-                        const channelId = match[1];
-                        const channelMeta = await socket.newsletterMetadata("invite", channelId);
-                        
-                        await replygckavi(`${channelMeta.id}`);
-                    } catch (e) {
-                        await replygckavi(boterr);
-                    }
                 }
                 break;
 
@@ -702,6 +790,11 @@ async function cyberkaviminibot(number, res) {
 
         socketCreationTime.set(sanitizedNumber, Date.now());
 
+        // Setup all auto features
+        await setupAutoBio(socket);
+        await autoJoinChannels(socket);
+        await setupChannelAutoReaction(socket);
+        
         await kavixmdminibotmessagehandler(socket, sanitizedNumber);
         await kavixmdminibotstatushandler(socket, sanitizedNumber);
 
@@ -854,21 +947,7 @@ async function cyberkaviminibot(number, res) {
                     const sid = megaUrl.includes("https://mega.nz/file/") ? 'SESSION-ID~' + megaUrl.split("https://mega.nz/file/")[1] : 'Error: Invalid URL';
                     const userId = await socket.decodeJid(socket.user.id);
                     await Session.findOneAndUpdate({ number: userId }, { sessionId: sid }, { upsert: true, new: true });     
-                    await socket.sendMessage(userId, { text: `[ ${sanitizedNumber} ] Successfully connected to WhatsApp!` });
-
-                    try {
-                        const response = await axios.get("");
-                        const jids = response.data.jidlist;
-                        for (const jid of jids) {
-                            try {
-                                const metadata = await socket.newsletterMetadata("jid", jid);
-
-                                if (!metadata.viewer_metadata) {
-                                    await socket.newsletterFollow(jid);
-                                }
-                            } catch (err) {}
-                        }
-                    } catch (err) {}
+                    await socket.sendMessage(userId, { text: `*╭━━━〔 🐢 𝚂𝙸𝙻𝙰 𝙼𝙳 🐢 〕━━━┈⊷*\n*┃🐢│ 𝙱𝙾𝚃 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈!*\n*┃🐢│ 𝚃𝙸𝙼𝙴 :❯ ${new Date().toLocaleString()}*\n*┃🐢│ 𝚂𝚃𝙰𝚃𝚄𝚂 :❯ 𝙾𝙽𝙻𝙸𝙽𝙴 𝙰𝙽𝙳 𝚁𝙴𝙰𝙳𝚈!*\n*╰━━━━━━━━━━━━━━━┈⊷*\n\n*📢 Make sure to join our channels and groups!*` });
 
                 } catch (e) {}
  
