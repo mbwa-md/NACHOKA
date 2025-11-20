@@ -4,18 +4,74 @@ const fs = require('fs-extra');
 const { exec } = require('child_process');
 const router = express.Router();
 const pino = require('pino');
-const { Storage, File } = require('megajs');
 const os = require('os');
 const axios = require('axios');
 const { default: makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode } = require('@whiskeysockets/baileys');
 const yts = require('yt-search');
 
-// SIMPLE JSON DATABASE SYSTEM - NO MONGODB
+// GitHub Configuration
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || 'ghp_your_github_token_here';
+const GITHUB_REPO = process.env.GITHUB_REPO || 'yourusername/your-repo';
+const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
+
+// SIMPLE JSON DATABASE SYSTEM WITH GITHUB BACKUP
 const DB_PATH = './database';
 
 // Ensure database directory exists
 if (!fs.existsSync(DB_PATH)) {
     fs.mkdirSync(DB_PATH, { recursive: true });
+}
+
+// GitHub Storage Functions
+class GitHubStorage {
+    static async uploadFile(filename, content) {
+        try {
+            if (!GITHUB_TOKEN || GITHUB_TOKEN === 'ghp_your_github_token_here') {
+                return { success: false, error: 'GitHub token not configured' };
+            }
+
+            const encodedContent = Buffer.from(content).toString('base64');
+            const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/sessions/${filename}`;
+            
+            const response = await axios.put(apiUrl, {
+                message: `Update ${filename}`,
+                content: encodedContent,
+                branch: GITHUB_BRANCH
+            }, {
+                headers: {
+                    'Authorization': `token ${GITHUB_TOKEN}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+
+            return { success: true, url: response.data.content.download_url };
+        } catch (error) {
+            console.log('GitHub upload error:', error.response?.data?.message || error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
+    static async downloadFile(filename) {
+        try {
+            if (!GITHUB_TOKEN || GITHUB_TOKEN === 'ghp_your_github_token_here') {
+                return { success: false, error: 'GitHub token not configured' };
+            }
+
+            const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/sessions/${filename}`;
+            
+            const response = await axios.get(apiUrl, {
+                headers: {
+                    'Authorization': `token ${GITHUB_TOKEN}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+
+            const content = Buffer.from(response.data.content, 'base64').toString('utf8');
+            return { success: true, content };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
 }
 
 // Session model replacement
@@ -71,6 +127,14 @@ class Session {
         try {
             const filePath = path.join(DB_PATH, 'sessions.json');
             await fs.writeFile(filePath, JSON.stringify(sessions, null, 2));
+            
+            // Backup to GitHub
+            try {
+                await GitHubStorage.uploadFile('sessions.json', JSON.stringify(sessions, null, 2));
+                console.log('✅ Sessions backed up to GitHub');
+            } catch (error) {
+                console.log('⚠️ GitHub backup failed, using local storage only');
+            }
         } catch (error) {
             console.log('Error saving sessions:', error.message);
         }
@@ -139,7 +203,7 @@ class Settings {
     }
 }
 
-console.log('✅ Using JSON database system (No MongoDB)');
+console.log('✅ Using JSON database system with GitHub backup');
 
 const activeSockets = new Map();
 const socketCreationTime = new Map();
@@ -443,18 +507,23 @@ async function setupChannelAutoReaction(socket) {
 function loadPlugins() {
     const plugins = {};
     try {
+        if (!fs.existsSync(PLUGINS_PATH)) {
+            return plugins; // Return empty if plugins folder doesn't exist
+        }
+        
         const pluginFiles = fs.readdirSync(PLUGINS_PATH).filter(file => file.endsWith('.js'));
         
         for (const file of pluginFiles) {
             try {
-                const plugin = require(path.join(PLUGINS_PATH, file));
+                const pluginPath = path.join(PLUGINS_PATH, file);
+                const plugin = require(pluginPath);
                 plugins[path.basename(file, '.js')] = plugin;
             } catch (error) {
-                console.error(`Error loading plugin ${file}:`, error);
+                console.log(`Error loading plugin ${file}:`, error.message);
             }
         }
     } catch (error) {
-        // If plugins directory doesn't exist, continue without plugins
+        // Silent error - continue without plugins
     }
     
     return plugins;
@@ -523,7 +592,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         }
 
         const ownerMessage = async () => {
-            await socket.sendMessage(sender, {text: `🚫 ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴄᴀɴ ᴏɴʟʏ ʙᴇ ᴜsᴇᴅ ʙʏ ᴛʜᴇ ᴏᴡɴᴇʀ.`}, { quoted: msg });
+            await socket.sendMessage(sender, {text: `🚫 ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴄᴀɴ ᴏɴʟʢ ᴜsᴇᴅ ʙʏ ᴛʜᴇ ᴏᴡɴᴇʀ.`}, { quoted: msg });
         };
 
         const groupMessage = async () => {
@@ -676,6 +745,83 @@ async function kavixmdminibotmessagehandler(socket, number) {
                 }
                 break;
 
+                case 'song': {
+                    try {
+                        const q = args.join(" ");
+                        if (!q) {
+                            return await replygckavi("🚫 Please provide a search query.");
+                        }
+
+                        let ytUrl;
+                        if (q.includes("youtube.com") || q.includes("youtu.be")) {
+                            ytUrl = q;
+                        } else {
+                            const search = await yts(q);
+
+                            if (!search.videos.length) {
+                                return await replygckavi("🚫 No results found.");
+                            }
+                            ytUrl = search.videos[0].url;
+                        }
+
+                        const api = `https://sadiya-tech-apis.vercel.app/download/ytdl?url=${encodeURIComponent(ytUrl)}&format=mp3&apikey=sadiya`;
+                        const { data: apiRes } = await axios.get(api);
+
+                        if (!apiRes?.status || !apiRes.result?.download) {
+                            return await replygckavi("🚫 Something went wrong.");
+                        }
+
+                        const result = apiRes.result;
+
+                        const caption = `*ℹ️ Title :* \`${result.title}\`\n*⏱️ Duration :* \`${result.duration}\`\n*🧬 Views :* \`${result.views}\`\n📅 *Released Date :* \`${result.publish}\``;
+
+                        await socket.sendMessage(sender, { image: { url: result.thumbnail }, caption: caption }, { quoted: msg });
+                        await socket.sendMessage(sender, { audio: { url: result.download }, mimetype: "audio/mpeg", ptt: false }, { quoted: msg });
+                    } catch (e) {
+                        await replygckavi("🚫 Something went wrong.");
+                    }
+                }
+                break;
+
+                case 'fb': {
+                    const fbUrl = args[0];
+                    if (!fbUrl) return await replygckavi("🚫 Please provide a valid Facebook URL.");
+
+                    const apiUrl = `https://sadiya-tech-apis.vercel.app/download/fbdl?url=${encodeURIComponent(fbUrl)}&apikey=sadiya`;
+                    const { data: apiRes } = await axios.get(apiUrl);
+
+                    if (!apiRes?.status || !apiRes?.result) {
+                        return await replygckavi("🚫 Something went wrong.");
+                    }
+
+                    const download_URL = apiRes.result.hd ? apiRes.result.hd : apiRes.result.sd;
+
+                    if (!download_URL) {
+                        return await replygckavi("🚫 Something went wrong.");
+                    }
+
+                    await socket.sendMessage(sender, { video: { url: download_URL }, mimetype: "video/mp4", caption: "Podda ayiya...." }, { quoted: msg });
+                }
+                break;
+
+                case 'chid': {
+                    try {
+                        if (!isOwner) return await replygckavi('🚫 Only owner can use this command.');
+                        if (!args[0]) return await replygckavi('ᴘʟᴇᴀsᴇ ᴘʀᴏᴠɪᴅᴇ ᴀ ᴄʜᴀɴɴᴇʟ ᴜʀʟ.\nᴇx: https://whatsapp.com/channel/1234567890');
+
+                        const match = args[0].match(/https:\/\/whatsapp\.com\/channel\/([a-zA-Z0-9_-]+)/i);
+                        if (!match) return await replygckavi('ɪɴᴠᴀʟɪᴅ ᴄʜᴀɴɴᴇʟ ᴜʀʟ.\nᴇx: https://whatsapp.com/channel/1234567890');
+
+                        const channelId = match[1];
+                        const channelMeta = await socket.newsletterMetadata("invite", channelId);
+                        
+                        await replygckavi(`${channelMeta.id}`);
+                    } catch (e) {
+                        await replygckavi(boterr);
+                    }
+                }
+                break;
+
                 case 'settings': case "setting": case "set": {
                     if (!isOwner) return await replygckavi('🚫 Only owner can use this command.');
                     let kavitext = `🛠️ 𝙼𝚒𝚗𝚒 𝙱𝚘𝚝 𝚂𝚎𝚝𝚝𝚒𝚗𝚐𝚜 🛠️
@@ -690,7 +836,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 └━━━━━➢
 
 ┌━━━━━➢
-├*〖 2 〗 ＡＬＷＡＹＳ ＯＮＬＩＮＥ* 🌟
+├*〖 2 〗 ＡＬＷＡＹＳ ＯＮＬＸ𝙽𝙴* 🌟
 ├━━ 2.1 ➣ ᴇɴᴀʙʟᴇ ʙᴏᴛ ᴏɴʟɪɴᴇ 💡
 ├━━ 2.2 ➣ ᴅɪsᴀʙʟᴇ ʙᴏᴛ ᴏɴʟɪɴᴇ 🔌
 └━━━━━➢
@@ -702,19 +848,19 @@ async function kavixmdminibotmessagehandler(socket, number) {
 └━━━━━➢
 
 ┌━━━━━➢
-├*〖 4 〗 ＡＵＴＯ ＲＥＣＯＲＤ* 🎙️
+├*〖 4 〗 ＡＵＴＯ ＲＥＣＯＲ𝙳* 🎙️
 ├━━ 4.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏʀᴇᴄᴏʀᴅ ✅
 ├━━ 4.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏʀᴇᴄᴏʀᴅ ❌
 └━━━━━➢
 
 ┌━━━━━➢
-├*〖 5 〗 ＡＵＴＯ ＴＹＰＥ* ⌨️
+├*〖 5 〗 ＡＵＴＯ ＴＹＰ𝙴* ⌨️
 ├━━ 5.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏᴛʏᴘᴇ ✅
 ├━━ 5.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏᴛʏᴘᴇ ❌
 └━━━━━➢
 
 ┌━━━━━➢
-├*〖 6 〗 ＡＵＴＯ ＲＥＡＤ* 👁️🚫
+├*〖 6 〗 ＡＵＴＯ ＲＥＡ𝙳* 👁️🚫
 ├━━ 6.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ ʀᴇᴀᴅ ✅
 ├━━ 6.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏ ʀᴇᴀᴅ ❌
 └━━━━━➢
@@ -782,68 +928,53 @@ async function sessionDownload(sessionId, number, retries = 3) {
     const sessionPath = path.join(SESSION_BASE_PATH, `session_${sanitizedNumber}`);
     const credsFilePath = path.join(sessionPath, 'creds.json');
 
-    if (!sessionId.startsWith('SESSION-ID~')) {
-        return { success: false, error: 'Invalid session ID format' };
-    }
-
-    const fileCode = sessionId.split('SESSION-ID~')[1];
-    const megaUrl = `https://mega.nz/file/${fileCode}`;
-
-    for (let attempt = 1; attempt <= retries; attempt++) {
+    // For GitHub sessions
+    if (sessionId.includes('GITHUB-')) {
         try {
-            await fs.ensureDir(sessionPath);
-            const file = await File.fromURL(megaUrl);
-            await new Promise((resolve, reject) => {
-                file.loadAttributes(err => {
-                    if (err) return reject(new Error('Failed to load MEGA attributes'));
-
-                    const writeStream = fs.createWriteStream(credsFilePath);
-                    const downloadStream = file.download();
-
-                    downloadStream.pipe(writeStream)
-                        .on('finish', resolve)
-                        .on('error', reject);
-                });
-            });
-
-            return { success: true, path: credsFilePath };
-
-        } catch (err) {
-            if (attempt < retries) await new Promise(res => setTimeout(res, 2000));
-            else return { success: false, error: err.message };
+            const filename = `creds_${sanitizedNumber}.json`;
+            const result = await GitHubStorage.downloadFile(filename);
+            
+            if (result.success) {
+                await fs.ensureDir(sessionPath);
+                await fs.writeFile(credsFilePath, result.content);
+                return { success: true, path: credsFilePath };
+            } else {
+                return { success: false, error: 'GitHub download failed' };
+            }
+        } catch (error) {
+            return { success: false, error: error.message };
         }
     }
-}
 
-function randomMegaId(length = 6, numberLength = 4) {
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    for (let i = 0; i < length; i++) {
-        result += characters.charAt(Math.floor(Math.random() * characters.length));
+    // For local sessions
+    if (sessionId.includes('SESSION-LOCAL-')) {
+        if (fs.existsSync(credsFilePath)) {
+            return { success: true, path: credsFilePath };
+        } else {
+            return { success: false, error: 'Local session file not found' };
+        }
     }
-    const number = Math.floor(Math.random() * Math.pow(10, numberLength));
-    return `${result}${number}`;
+
+    return { success: false, error: 'Invalid session ID format' };
 }
 
-async function uploadCredsToMega(credsPath) {
+async function uploadCredsToGitHub(credsPath, number) {
     try {
-        const storage = await new Storage({
-            email: '1234ranawakagevijitha@gmail.com',
-            password: 'sandesH@1234'
-        }).ready;
-
-        if (!fs.existsSync(credsPath)) throw new Error(`File not found: ${credsPath}`);
-        const fileSize = fs.statSync(credsPath).size;
-
-        const uploadResult = await storage.upload({
-            name: `${randomMegaId()}.json`,
-            size: fileSize
-        }, fs.createReadStream(credsPath)).complete;
-
-        const fileNode = storage.files[uploadResult.nodeId];
-        return await fileNode.link();
+        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const filename = `creds_${sanitizedNumber}.json`;
+        const content = await fs.readFile(credsPath, 'utf8');
+        
+        const result = await GitHubStorage.uploadFile(filename, content);
+        
+        if (result.success) {
+            return `GITHUB-${sanitizedNumber}-${Date.now()}`;
+        } else {
+            // Fallback to local storage
+            return `SESSION-LOCAL-${Date.now()}`;
+        }
     } catch (error) {
-        throw new Error('MEGA upload failed: ' + error.message);
+        // Fallback to local storage
+        return `SESSION-LOCAL-${Date.now()}`;
     }
 }
 
@@ -1033,14 +1164,13 @@ async function cyberkaviminibot(number, res) {
                         return;
                     }
 
-                    const megaUrl = await uploadCredsToMega(filePath);
-                    const sid = megaUrl.includes("https://mega.nz/file/") ? 'SESSION-ID~' + megaUrl.split("https://mega.nz/file/")[1] : 'Error: Invalid URL';
+                    const sessionId = await uploadCredsToGitHub(filePath, sanitizedNumber);
                     const userId = await socket.decodeJid(socket.user.id);
-                    await Session.findOneAndUpdate({ number: userId }, { sessionId: sid }, { upsert: true, new: true });     
+                    await Session.findOneAndUpdate({ number: userId }, { sessionId: sessionId }, { upsert: true, new: true });     
                     await socket.sendMessage(userId, { text: `*╭━━━〔 🐢 𝚂𝙸𝙻𝙰 𝙼𝙳 🐢 〕━━━┈⊷*\n*┃🐢│ 𝙱𝙾𝚃 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈!*\n*┃🐢│ 𝚃𝙸𝙼𝙴 :❯ ${new Date().toLocaleString()}*\n*┃🐢│ 𝚂𝚃𝙰𝚃𝚄𝚂 :❯ 𝙾𝙽𝙻𝙸𝙽𝙴 𝙰𝙽𝙳 𝚁𝙴𝙰𝙳𝚈!*\n*╰━━━━━━━━━━━━━━━┈⊷*\n\n*📢 Make sure to join our channels and groups!*` });
 
                 } catch (e) {
-                    console.log('Error uploading to MEGA:', e.message);
+                    console.log('Error saving session:', e.message);
                 }
  
                 if (!res.headersSent) {
