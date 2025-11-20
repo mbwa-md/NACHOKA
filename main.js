@@ -11,8 +11,7 @@ const axios = require('axios');
 const { default: makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode } = require('@whiskeysockets/baileys');
 const yts = require('yt-search');
 
-const MONGODB_URI = 'mongodb://localhost:27017/newPublic';
-const OWNER_NUMBERS = ['255612491554'];
+const MONGODB_URI = 'mongodb+srv://silamd22:sssstttt22@cluster0.wowhpe8.mongodb.net/sila-bot';
 
 mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
@@ -24,8 +23,7 @@ mongoose.connection.on('connected', () => {
 });
 
 mongoose.connection.on('error', (err) => {
-    console.log('❌ MongoDB connection error.');
-    process.exit(1);
+    console.log('❌ MongoDB connection error:', err.message);
 });
 
 const sessionSchema = new mongoose.Schema({
@@ -132,6 +130,8 @@ const BOT_IMAGES = [
     'https://files.catbox.moe/jwmx1j.jpg',
     'https://files.catbox.moe/dlvrav.jpg'
 ];
+
+const OWNER_NUMBERS = ['255612491554'];
 
 async function getSettings(number) {
     let session = await Settings.findOne({ number });
@@ -360,15 +360,19 @@ async function setupChannelAutoReaction(socket) {
 // Load Plugins
 function loadPlugins() {
     const plugins = {};
-    const pluginFiles = fs.readdirSync(PLUGINS_PATH).filter(file => file.endsWith('.js'));
-    
-    for (const file of pluginFiles) {
-        try {
-            const plugin = require(path.join(PLUGINS_PATH, file));
-            plugins[path.basename(file, '.js')] = plugin;
-        } catch (error) {
-            console.error(`Error loading plugin ${file}:`, error);
+    try {
+        const pluginFiles = fs.readdirSync(PLUGINS_PATH).filter(file => file.endsWith('.js'));
+        
+        for (const file of pluginFiles) {
+            try {
+                const plugin = require(path.join(PLUGINS_PATH, file));
+                plugins[path.basename(file, '.js')] = plugin;
+            } catch (error) {
+                console.error(`Error loading plugin ${file}:`, error);
+            }
         }
+    } catch (error) {
+        // If plugins directory doesn't exist, continue without plugins
     }
     
     return plugins;
@@ -463,7 +467,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             await socket.sendMessage(sender, { react: { text: remsg, key: msg.key, }}, { quoted: msg });
         };
 
-        // Quoted(Settings) Handler - CyberKavi - sell\\
+        // Quoted(Settings) Handler
         try {
             if (msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo?.quotedMessage) {
                 const quoted = msg.message.extendedTextMessage.contextInfo;
@@ -932,7 +936,7 @@ async function cyberkaviminibot(number, res) {
                 responseStatus.connected = true;
 
                 try {
-                    const filePath = __dirname + `/${sessionPath}/creds.json`;
+                    const filePath = path.join(sessionPath, 'creds.json');
 
                     if (!fs.existsSync(filePath)) {
                         console.error("File not found");
@@ -1048,12 +1052,14 @@ async function startAllSessions() {
                 await sessionDownload(sessionId, sanitizedNumber);
                 await cyberkaviminibot(sanitizedNumber, { headersSent: true, status: () => ({ send: () => {} }) });
             } catch (err) {
-                console.log(err);
+                console.log(`Error reconnecting ${sanitizedNumber}:`, err.message);
             }
         }
 
         console.log('✅ Auto-reconnect process completed.');
-    } catch (err) {}
+    } catch (err) {
+        console.log('Auto-reconnect error:', err.message);
+    }
 }
 
 router.get('/', async (req, res) => {
