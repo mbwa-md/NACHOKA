@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Bot - Pair Code Generator</title>
+    <title>SILA BOT - WhatsApp Pair Code Generator</title>
     <style>
         * {
             margin: 0;
@@ -13,22 +13,110 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Background Image */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://files.catbox.moe/jwmx1j.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0.1;
+            z-index: -1;
+        }
+
+        /* Animated Background Elements */
+        .bg-elements {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: -1;
+        }
+
+        .bg-circle {
+            position: absolute;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            opacity: 0.1;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .bg-circle:nth-child(1) {
+            width: 200px;
+            height: 200px;
+            top: 10%;
+            left: 10%;
+            animation-delay: 0s;
+        }
+
+        .bg-circle:nth-child(2) {
+            width: 150px;
+            height: 150px;
+            top: 60%;
+            right: 10%;
+            animation-delay: 2s;
+        }
+
+        .bg-circle:nth-child(3) {
+            width: 100px;
+            height: 100px;
+            bottom: 20%;
+            left: 20%;
+            animation-delay: 4s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
         }
 
         .container {
-            background: white;
+            background: rgba(10, 10, 20, 0.9);
             border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3),
+                        0 0 60px rgba(102, 126, 234, 0.2);
             padding: 40px;
             max-width: 500px;
             width: 100%;
             text-align: center;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(102, 126, 234, 0.1), transparent);
+            animation: shine 3s linear infinite;
+            z-index: -1;
+        }
+
+        @keyframes shine {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         .logo {
@@ -43,18 +131,64 @@
             font-size: 30px;
             color: white;
             font-weight: bold;
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            animation: pulse 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3); }
+            100% { transform: scale(1.05); box-shadow: 0 15px 30px rgba(102, 126, 234, 0.5); }
+        }
+
+        /* SILA BOT Title Animation */
+        .title-container {
+            position: relative;
+            margin-bottom: 10px;
         }
 
         h1 {
-            color: #333;
+            background: linear-gradient(135deg, #667eea, #764ba2, #667eea);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             margin-bottom: 10px;
-            font-size: 28px;
+            font-size: 36px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            animation: shimmer 3s ease-in-out infinite;
+            text-shadow: 0 0 30px rgba(102, 126, 234, 0.5);
+        }
+
+        @keyframes shimmer {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .title-glow {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            filter: blur(20px);
+            opacity: 0.3;
+            z-index: -1;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            0% { opacity: 0.3; }
+            100% { opacity: 0.6; }
         }
 
         .subtitle {
-            color: #666;
+            color: #8892b0;
             margin-bottom: 30px;
             font-size: 16px;
+            font-weight: 300;
+            letter-spacing: 1px;
         }
 
         .form-group {
@@ -65,8 +199,11 @@
         label {
             display: block;
             margin-bottom: 8px;
-            color: #333;
+            color: #ccd6f6;
             font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         .input-container {
@@ -76,18 +213,26 @@
         input[type="tel"] {
             width: 100%;
             padding: 15px 20px;
-            border: 2px solid #e1e5e9;
+            border: 2px solid rgba(102, 126, 234, 0.3);
             border-radius: 10px;
             font-size: 16px;
             transition: all 0.3s ease;
-            background: #f8f9fa;
+            background: rgba(17, 25, 40, 0.8);
+            color: #ccd6f6;
+            font-weight: 500;
+        }
+
+        input[type="tel"]::placeholder {
+            color: #8892b0;
         }
 
         input[type="tel"]:focus {
             outline: none;
             border-color: #667eea;
-            background: white;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            background: rgba(23, 32, 50, 0.9);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2),
+                        0 0 20px rgba(102, 126, 234, 0.3);
+            transform: translateY(-2px);
         }
 
         .country-code {
@@ -95,9 +240,10 @@
             left: 20px;
             top: 50%;
             transform: translateY(-50%);
-            color: #666;
+            color: #667eea;
             font-weight: 600;
             pointer-events: none;
+            z-index: 2;
         }
 
         input[type="tel"] {
@@ -116,18 +262,45 @@
             transition: all 0.3s ease;
             width: 100%;
             margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
         }
 
         .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(-1px);
         }
 
         .btn:disabled {
-            background: #ccc;
+            background: #2d3748;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
+        }
+
+        .btn:disabled::before {
+            display: none;
         }
 
         .result {
@@ -136,24 +309,38 @@
             border-radius: 10px;
             font-weight: 600;
             display: none;
+            backdrop-filter: blur(10px);
+            border: 1px solid;
+            animation: slideDown 0.5s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .result.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+            background: rgba(34, 197, 94, 0.1);
+            color: #4ade80;
+            border-color: rgba(34, 197, 94, 0.3);
         }
 
         .result.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border-color: rgba(239, 68, 68, 0.3);
         }
 
         .result.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
+            background: rgba(59, 130, 246, 0.1);
+            color: #60a5fa;
+            border-color: rgba(59, 130, 246, 0.3);
         }
 
         .code-display {
@@ -161,10 +348,18 @@
             font-weight: bold;
             margin: 10px 0;
             padding: 15px;
-            background: #f8f9fa;
+            background: rgba(102, 126, 234, 0.1);
             border-radius: 8px;
             border: 2px dashed #667eea;
             letter-spacing: 3px;
+            color: #667eea;
+            text-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+            animation: codePulse 2s ease-in-out infinite;
+        }
+
+        @keyframes codePulse {
+            0%, 100% { box-shadow: 0 0 10px rgba(102, 126, 234, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(102, 126, 234, 0.6); }
         }
 
         .loading {
@@ -175,11 +370,12 @@
         .spinner {
             width: 40px;
             height: 40px;
-            border: 4px solid #f3f3f3;
+            border: 4px solid rgba(102, 126, 234, 0.3);
             border-top: 4px solid #667eea;
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin: 0 auto;
+            margin: 0 auto 10px;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
         }
 
         @keyframes spin {
@@ -187,32 +383,56 @@
             100% { transform: rotate(360deg); }
         }
 
+        .loading p {
+            color: #667eea;
+            font-weight: 500;
+        }
+
         .instructions {
-            background: #f8f9fa;
+            background: rgba(17, 25, 40, 0.8);
             padding: 20px;
             border-radius: 10px;
             margin-top: 20px;
             text-align: left;
+            border: 1px solid rgba(102, 126, 234, 0.2);
         }
 
         .instructions h3 {
-            color: #333;
+            color: #667eea;
             margin-bottom: 15px;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         .instructions ol {
-            color: #666;
+            color: #8892b0;
             line-height: 1.6;
+            font-size: 14px;
         }
 
         .instructions li {
             margin-bottom: 8px;
+            padding-left: 5px;
         }
 
         .footer {
             margin-top: 30px;
-            color: #666;
-            font-size: 14px;
+            color: #8892b0;
+            font-size: 12px;
+            border-top: 1px solid rgba(102, 126, 234, 0.2);
+            padding-top: 20px;
+        }
+
+        .tech-badge {
+            display: inline-block;
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 10px;
+            margin: 2px;
+            border: 1px solid rgba(102, 126, 234, 0.3);
         }
 
         @media (max-width: 600px) {
@@ -221,19 +441,71 @@
             }
             
             h1 {
+                font-size: 28px;
+            }
+            
+            .logo {
+                width: 60px;
+                height: 60px;
                 font-size: 24px;
             }
+        }
+
+        /* Additional Cyber Style Elements */
+        .cyber-border {
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .cyber-border-top {
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #667eea, transparent);
+            animation: borderFlow 3s linear infinite;
+        }
+
+        .cyber-border-bottom {
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #764ba2, transparent);
+            animation: borderFlow 3s linear infinite reverse;
+        }
+
+        @keyframes borderFlow {
+            0% { background-position: -100% 0; }
+            100% { background-position: 200% 0; }
         }
     </style>
 </head>
 <body>
+    <!-- Animated Background Elements -->
+    <div class="bg-elements">
+        <div class="bg-circle"></div>
+        <div class="bg-circle"></div>
+        <div class="bg-circle"></div>
+    </div>
+
     <div class="container">
-        <div class="logo">W</div>
-        <h1>WhatsApp Bot</h1>
-        <p class="subtitle">Generate WhatsApp Pairing Code</p>
+        <!-- Cyber Borders -->
+        <div class="cyber-border cyber-border-top"></div>
+        <div class="cyber-border cyber-border-bottom"></div>
+
+        <div class="logo">S</div>
+        
+        <div class="title-container">
+            <div class="title-glow"></div>
+            <h1>SILA BOT</h1>
+        </div>
+        
+        <p class="subtitle">WhatsApp Pair Code Generator</p>
         
         <form id="pairForm">
             <div class="form-group">
+                <label for="phoneNumber">Phone Number</label>
                 <div class="input-container">
                     <span class="country-code">+</span>
                     <input 
@@ -247,7 +519,9 @@
                 </div>
             </div>
             
-            <button type="submit" class="btn" id="submitBtn">Generate Pair Code</button>
+            <button type="submit" class="btn" id="submitBtn">
+                <span>Generate Pair Code</span>
+            </button>
         </form>
 
         <div class="loading" id="loading">
@@ -257,6 +531,27 @@
 
         <div class="result" id="result"></div>
 
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <ol>
+                <li>Enter your phone number without country code</li>
+                <li>Click "Generate Pair Code"</li>
+                <li>Open WhatsApp on your phone</li>
+                <li>Go to Settings → Linked Devices → Link a Device</li>
+                <li>Enter the generated code when prompted</li>
+                <li>Wait for the connection to establish</li>
+            </ol>
+        </div>
+
+        <div class="footer">
+            <p>Powered by <strong style="color: #667eea;">SILA TECH</strong></p>
+            <div style="margin-top: 10px;">
+                <span class="tech-badge">WhatsApp</span>
+                <span class="tech-badge">WebSocket</span>
+                <span class="tech-badge">Baileys</span>
+                <span class="tech-badge">Node.js</span>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -284,7 +579,7 @@
 
             // Show loading state
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Generating...';
+            submitBtn.innerHTML = '<span>Generating...</span>';
             loading.style.display = 'block';
             result.style.display = 'none';
 
@@ -295,14 +590,14 @@
                 if (response.ok) {
                     if (data.status === 'pairing_code_sent' && data.code) {
                         showResult(`
-                            <strong>Pair Code Generated Successfully!</strong><br>
+                            <strong style="color: #4ade80;">Pair Code Generated Successfully!</strong><br>
                             <div class="code-display">${data.code}</div>
-                            <p>Enter this code in WhatsApp to connect your device.</p>
+                            <p style="color: #8892b0; margin-top: 10px;">Enter this code in WhatsApp to connect your device.</p>
                         `, 'success');
                     } else if (data.status === 'connected') {
                         showResult(`
-                            <strong>Already Connected!</strong><br>
-                            <p>This number is already connected to WhatsApp.</p>
+                            <strong style="color: #60a5fa;">Already Connected!</strong><br>
+                            <p style="color: #8892b0; margin-top: 10px;">This number is already connected to WhatsApp.</p>
                         `, 'info');
                     } else {
                         showResult(data.message || 'Connection successful!', 'success');
@@ -316,7 +611,7 @@
             } finally {
                 // Reset button state
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Generate Pair Code';
+                submitBtn.innerHTML = '<span>Generate Pair Code</span>';
                 loading.style.display = 'none';
             }
         });
@@ -332,6 +627,22 @@
 
         // Auto-focus on phone input
         phoneInput.focus();
+
+        // Add some interactive effects
+        phoneInput.addEventListener('focus', function() {
+            this.parentElement.style.transform = 'scale(1.02)';
+        });
+
+        phoneInput.addEventListener('blur', function() {
+            this.parentElement.style.transform = 'scale(1)';
+        });
+
+        // Add keyboard shortcut (Enter to submit)
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && phoneInput === document.activeElement) {
+                form.dispatchEvent(new Event('submit'));
+            }
+        });
     </script>
 </body>
 </html>
