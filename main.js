@@ -222,14 +222,14 @@ if (!fs.existsSync(PLUGINS_PATH)) {
 const defaultSettings = {
     online: 'off',
     autoread: false,
-    autoswview: false,
-    autoswlike: false,
+    autoswview: true,
+    autoswlike: true,
     autoreact: false,
-    autorecord: false,
-    autotype: false,
+    autorecord: true,
+    autotype: true,
     worktype: 'public',
-    antidelete: 'off',
-    autoai: "off",
+    antidelete: 'on',
+    autoai: "on",
     autosticker: "off",
     autovoice: "off",
     anticall: false,
@@ -695,40 +695,37 @@ async function kavixmdminibotmessagehandler(socket, number) {
                         const totalMemMB = (os.totalmem() / (1024 * 1024)).toFixed(2);
                         const freeMemMB = (os.freemem() / (1024 * 1024)).toFixed(2);
                         
-                        const message = `*╭━━━〔 🐢 𝚂𝙸𝙻𝙰 𝙼𝙳 🐢 〕━━━┈⊷*
-*┃🐢│ 𝙱𝙾𝚃 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈!*
-*┃🐢│ 𝚃𝙸𝙼𝙴 :❯ ${new Date().toLocaleString()}*
-*┃🐢│ 𝚂𝚃𝙰𝚃𝚄𝚂 :❯ 𝙾𝙽𝙻𝙸𝙽𝙴 𝙰𝙽𝙳 𝚁𝙴𝙰𝙳𝚈!*
-*╰━━━━━━━━━━━━━━━┈⊷*
+                        const message = `╭─━━━━━━━━━━━━━━━━━━━━─╮
+│ 🐢 𝗦𝗜𝗟𝗔 𝗠𝗗   
+│ ✦ Hello User 👋  
+│ ✦ Welcome to the command menu
+╰─━━━━━━━━━━━━━━━━━━━━─╯
 
-『 👋 Hello 』
-                    
-> WhatsApp Bot Menu
+┌───〔 📊 𝗦𝘆𝘀𝘁𝗲𝗺 𝗜𝗻𝗳𝗼 〕───┐
+│• Version: 1.0.0
+│• Prefix: ${PREFIX}
+│• Total RAM: ${totalMemMB} MB
+│• Free RAM: ${freeMemMB} MB
+│• Uptime: ${hours}h ${minutes}m ${seconds}s
+│• OS: ${os.type()}
+│• Platform: ${os.platform()}
+│• CPU Arch: ${os.arch()}
+└────────────────────────┘
 
-┏━━━━━━━━━━━━━━━➢
-┠➥ *ᴠᴇʀsɪᴏɴ: 1.0.0*
-┠➥ *ᴘʀᴇғɪx: ${PREFIX}*
-┠➥ *ᴛᴏᴛᴀʟ ᴍᴇᴍᴏʀʏ: ${totalMemMB} MB*
-┠➥ *ғʀᴇᴇ ᴍᴇᴍᴏʀʏ: ${freeMemMB} MB*
-┠➥ *ᴜᴘᴛɪᴍᴇ: ${hours}h ${minutes}m ${seconds}s*
-┠➥ *ᴏᴘᴇʀᴀᴛɪɴɢ sʏsᴛᴇᴍ: ${os.type()}*
-┠➥ *ᴘʟᴀᴛғᴏʀᴍ: ${os.platform()}*
-┠➥ *ᴀʀᴄʜɪᴛᴇᴄᴛᴜʀᴇ: ${os.arch()}*
-┗━━━━━━━━━━━━━━━➢
+╭───《 ⚙ Bot Commands 》───╮
+│• alive       
+│• ping        
+│• video
+|• song
+|• menu
+│• chid
+|• freebot
+│• setemoji
+|• settings
+╰─────────────────────────╯
 
-*\`《━━━Bot Commands━━━》\`*
-
-> ➥ ᴀʟɪᴠᴇ
-> ➥ ᴍᴇɴᴜ
-> ➥ ᴘɪɴɢ
-> ➥ sᴏɴɢ
-> ➥ ᴠɪᴅᴇᴏ
-> ➥ sᴇᴛᴛɪɴɢs
-> ➥ ᴄʜɪᴅ
-> ➥ ғʀᴇᴇʙᴏᴛ
-> ➥ sᴇᴛᴇᴍᴏᴊɪ
-
-*📢 Make sure to join our channels and groups!*`;
+📢 Join our official channels & groups!
+`;
 
                         await socket.sendMessage(sender, { image: { url: botImg }, caption: message }, { quoted: msg });
                     } catch (error) {
