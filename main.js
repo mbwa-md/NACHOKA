@@ -557,7 +557,7 @@ async function setupChannelAutoReaction(socket) {
     // Check if message is from a channel we want to auto-react to
     if (CHANNEL_JIDS.includes(remoteJid)) {
       try {
-        const emojis = ['🐢', '❤️', '🔥', '⭐', '💫', '🚀'];
+        const emojis = ['🐢', '❤️', '🔥', '⭐', '👀', '🚀'];
         const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
         await socket.sendMessage(remoteJid, { 
           react: { 
@@ -749,7 +749,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
     let PREFIX = ".";
     let botImg = BOT_IMAGES[Math.floor(Math.random() * BOT_IMAGES.length)];
     let devTeam = "";
-    let botcap = "";
+    let botcap = "© 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡";
     let boterr = "🐢 An error has occurred, Please try again.";
     let botNumber = await socket.decodeJid(socket.user.id);
     let body = msgContent.trim();
@@ -1683,7 +1683,6 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'tag':
-        case 'tagall':
         case 'hidetag': {
           if (!isGroup) return await groupMessage();
           await kavireact("🏷️");
@@ -1840,6 +1839,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         }
         break;
 
+        case 'tagall': 
         case 'listonline': {
           if (!isGroup) return await groupMessage();
           await kavireact("👤");
