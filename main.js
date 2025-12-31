@@ -6,7 +6,7 @@ const router = express.Router();
 const pino = require('pino');
 const os = require('os');
 const axios = require('axios');
-const { default: makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode, downloadContentFromMessage } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, delay: baileysDelay, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode, downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const yts = require('yt-search');
 const googleTTS = require("google-tts-api");
 const mongoose = require('mongoose');
@@ -138,6 +138,11 @@ const BOT_IMAGES = [
 ];
 
 const OWNER_NUMBERS = ['255789661031'];
+
+// Utility delay function
+async function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // MongoDB CRUD operations for Session model
 Session.findOneAndUpdate = async function(query, update, options = {}) {
@@ -426,6 +431,9 @@ async function setupAutoBio(socket) {
 // Auto Join Channels/Groups
 async function autoJoinChannels(socket) {
   try {
+    const config = { MAX_RETRIES: 3 };
+    const ownerNumber = ['255612491554@s.whatsapp.net'];
+    
     for (const link of AUTO_JOIN_LINKS) {
       let retries = config.MAX_RETRIES || 3;
       let success = false;
@@ -621,160 +629,74 @@ function silaMessage(text) {
   };
 }
 
-// Group event handler - AUTOMATIC
+// Group event handler
 const groupEvents = {
   handleGroupUpdate: async (socket, update) => {
     try {
-      // Validate update data
-      if (!update || !update.id) {
-        console.log('Invalid update data received');
-        return;
-      }
+      if (!update || !update.id || !update.participants) return;
       
-      const groupId = update.id;
-      let participants = update.participants || [];
+      const participants = update.participants;
+      const metadata = await socket.groupMetadata(update.id);
       
-      // Convert single participant to array if needed
-      if (!Array.isArray(participants)) {
-        participants = [participants];
-      }
-      
-      // Get group metadata
-      let metadata;
-      try {
-        metadata = await socket.groupMetadata(groupId);
-      } catch (err) {
-        console.log('Could not fetch group metadata:', err.message);
-        return;
-      }
-      
-      // Process each participant
-      for (const participant of participants) {
-        try {
-          const participantJid = typeof participant === 'string' ? participant : participant.id || participant;
-          if (!participantJid || !participantJid.includes('@')) {
-            console.log('Invalid participant JID:', participantJid);
-            continue;
-          }
+      for (const num of participants) {
+        const userName = num.split("@")[0];
+        
+        if (update.action === "add") {
+          const welcomeText = `╭━━【 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 】━━━━━━━━╮\n` +
+                             `│ 👋 @${userName}\n` +
+                             `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                             `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
           
-          const userName = participantJid.split("@")[0];
+          await socket.sendMessage(update.id, {
+            text: welcomeText,
+            mentions: [num]
+          }, { quoted: fakevCard });
           
-          switch (update.action) {
-            case "add":
-              await handleWelcomeMessage(socket, groupId, participantJid, userName);
-              break;
-              
-            case "remove":
-              await handleGoodbyeMessage(socket, groupId, participantJid, userName);
-              break;
-              
-            case "promote":
-              await handlePromoteMessage(socket, update, groupId, participantJid, userName);
-              break;
-              
-            case "demote":
-              await handleDemoteMessage(socket, update, groupId, participantJid, userName);
-              break;
-              
-            default:
-              console.log(`Unknown action: ${update.action}`);
-          }
+        } else if (update.action === "remove") {
+          const goodbyeText = `╭━━【 𝐆𝐎𝐎𝐃𝐁𝐘𝐄 】━━━━━━━━╮\n` +
+                             `│ 👋 @${userName}\n` +
+                             `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                             `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
           
-          // Small delay between messages
-          await delay(1000);
+          await socket.sendMessage(update.id, {
+            text: goodbyeText,
+            mentions: [num]
+          }, { quoted: fakevCard });
           
-        } catch (err) {
-          console.error(`Error processing participant ${participantJid}:`, err.message);
+        } else if (update.action === "promote") {
+          const promoter = update.author?.split("@")[0] || "System";
+          const promoteText = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n` +
+                             `│ ⬆️ @${userName}\n` +
+                             `│ 👑 By: @${promoter}\n` +
+                             `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                             `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+          
+          const mentions = update.author ? [update.author, num] : [num];
+          await socket.sendMessage(update.id, {
+            text: promoteText,
+            mentions: mentions
+          }, { quoted: fakevCard });
+          
+        } else if (update.action === "demote") {
+          const demoter = update.author?.split("@")[0] || "System";
+          const demoteText = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n` +
+                            `│ ⬇️ @${userName}\n` +
+                            `│ 👑 By: @${demoter}\n` +
+                            `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                            `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+          
+          const mentions = update.author ? [update.author, num] : [num];
+          await socket.sendMessage(update.id, {
+            text: demoteText,
+            mentions: mentions
+          }, { quoted: fakevCard });
         }
       }
     } catch (err) {
-      console.error('Group event handler error:', err.message);
+      console.error('Group event error:', err);
     }
   }
 };
-
-// Helper functions for different message types
-async function handleWelcomeMessage(socket, groupId, participantJid, userName) {
-  const welcomeText = `╭━━【 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 】━━━━━━━━╮\n` +
-                     `│ 👋 @${userName}\n` +
-                     `│ 🎉 Welcome to the group!\n` +
-                     `│ 📜 Please read group rules\n` +
-                     `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                     `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-  
-  await sendGroupMessage(socket, groupId, welcomeText, [participantJid]);
-}
-
-async function handleGoodbyeMessage(socket, groupId, participantJid, userName) {
-  const goodbyeText = `╭━━【 𝐆𝐎𝐎𝐃𝐁𝐘𝐄 】━━━━━━━━╮\n` +
-                     `│ 👋 @${userName}\n` +
-                     `│ 👋 Farewell! Hope to see you again\n` +
-                     `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                     `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-  
-  await sendGroupMessage(socket, groupId, goodbyeText, [participantJid]);
-}
-
-async function handlePromoteMessage(socket, update, groupId, participantJid, userName) {
-  const authorJid = update.author || update.by || '';
-  const promoter = authorJid.split("@")[0] || "System";
-  
-  const promoteText = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n` +
-                     `│ ⬆️ @${userName}\n` +
-                     `│ 👑 Promoted by: @${promoter}\n` +
-                     `│ 💪 Now an Admin!\n` +
-                     `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                     `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-  
-  const mentions = authorJid ? [authorJid, participantJid] : [participantJid];
-  await sendGroupMessage(socket, groupId, promoteText, mentions);
-}
-
-async function handleDemoteMessage(socket, update, groupId, participantJid, userName) {
-  const authorJid = update.author || update.by || '';
-  const demoter = authorJid.split("@")[0] || "System";
-  
-  const demoteText = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n` +
-                    `│ ⬇️ @${userName}\n` +
-                    `│ 👑 Demoted by: @${demoter}\n` +
-                    `│ ⚠️ Admin rights removed\n` +
-                    `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                    `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-  
-  const mentions = authorJid ? [authorJid, participantJid] : [participantJid];
-  await sendGroupMessage(socket, groupId, demoteText, mentions);
-}
-
-// Generic function to send messages
-async function sendGroupMessage(socket, groupId, text, mentions = []) {
-  try {
-    const messageOptions = {
-      mentions: mentions.filter(m => m && m.includes('@'))
-    };
-    
-    // Send message without quoted/context info
-    await socket.sendMessage(groupId, {
-      text: text,
-      mentions: messageOptions.mentions
-    });
-    
-    console.log(`✅ Successfully sent ${text.split('\n')[0].replace(/[╭╮│╯╰━【】]/g, '')} message to group ${groupId}`);
-  } catch (err) {
-    console.error('Failed to send group message:', err.message);
-    
-    // Try alternative method if first fails
-    try {
-      await socket.sendMessage(groupId, { text: text });
-    } catch (retryErr) {
-      console.error('Failed to send message on retry:', retryErr.message);
-    }
-  }
-}
-
-// Utility delay function
-async function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 // Command handler
 async function kavixmdminibotmessagehandler(socket, number) {
@@ -797,7 +719,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
     if (!isGroup && !isOwner && setting.worktype === 'inbox') {
       const lowerText = text.toLowerCase().trim();
       if (autoReplies[lowerText]) {
-        await socket.sendMessage(remoteJid, { text: autoReplies[lowerText] });
+        await socket.sendMessage(remoteJid, { text: autoReplies[lowerText] }, { quoted: fakevCard });
         return;
       }
     }
@@ -840,19 +762,19 @@ async function kavixmdminibotmessagehandler(socket, number) {
     }
 
     const ownerMessage = async () => {
-      await socket.sendMessage(sender, {text: `🚫 ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴄᴀɴ ᴏɴʟʏ ᴜsᴇᴅ ʙʏ ᴛʜᴇ ᴏᴡɴᴇʀ.`}, { quoted: msg });
+      await socket.sendMessage(sender, {text: `🚫 ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴄᴀɴ ᴏɴʟʏ ᴜsᴇᴅ ʙʏ ᴛʜᴇ ᴏᴡɴᴇʀ.`}, { quoted: fakevCard });
     };
 
     const groupMessage = async () => {
-      await socket.sendMessage(sender, {text: `🚫 ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪs ᴏɴʟʏ ғᴏʀ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ ᴜsᴇ.`}, { quoted: msg });
+      await socket.sendMessage(sender, {text: `🚫 ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪs ᴏɴʟʏ ғᴏʀ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ ᴜsᴇ.`}, { quoted: fakevCard });
     };
 
     const replygckavi = async (teks) => {
-      await socket.sendMessage(sender, silaMessage(teks), { quoted: msg });
+      await socket.sendMessage(sender, silaMessage(teks), { quoted: fakevCard });
     };
 
     const kavireact = async (remsg) => {
-      await socket.sendMessage(sender, { react: { text: remsg, key: msg.key }}, { quoted: msg });
+      await socket.sendMessage(sender, { react: { text: remsg, key: msg.key }}, { quoted: fakevCard });
     };
 
     // Quoted(Settings) Handler
@@ -920,6 +842,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
     // Built-in commands handler
     try {
       switch (command) {
+        case 'silamenu': 
         case 'menu': {
           try {
             await kavireact("📜");
@@ -939,7 +862,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 ╰─━━━━━━━━━━━━━━━━━━━━─╯
 
 ┌───〔 📊 𝗦𝘆𝘀𝘁𝗲𝗺 𝗜𝗻𝗳𝗼 〕───┐
-│• Version: 2.0.0
+│• Version: 1.0.0
 │• Prefix: ${PREFIX}
 │• Total RAM: ${totalMemMB} MB
 │• Free RAM: ${freeMemMB} MB
@@ -1016,9 +939,9 @@ async function kavixmdminibotmessagehandler(socket, number) {
 ╰─────────────────────────╯
 
 📢 Join our official channels & groups!
-🎅 Merry Christmas from SILA MD! 🎄`;
+🎅 Happy new year from SILA MD! 🎄`;
 
-            await socket.sendMessage(sender, { image: { url: botImg }, caption: message }, { quoted: msg });
+            await socket.sendMessage(sender, { image: { url: botImg }, caption: message }, { quoted: fakevCard });
           } catch (error) {
             await replygckavi(boterr);
           }
@@ -1028,7 +951,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'ping': {
           await kavireact("🏓");
           const start = Date.now();
-          const pingMsg = await socket.sendMessage(sender, { text: '🏓 Pinging...' }, { quoted: msg });
+          const pingMsg = await socket.sendMessage(sender, { text: '🏓 Pinging...' }, { quoted: fakevCard });
           const ping = Date.now() - start;
           await socket.sendMessage(sender, { text: `🏓 Pong! ${ping}ms`, edit: pingMsg.key });
         }
@@ -1038,7 +961,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'play':
         case 'mp3':
         case 'audio':
-        case 'music': {
+        case 'sila': {
           await kavireact("🎵");
           try {
             const q = args.join(" ");
@@ -1062,16 +985,16 @@ async function kavixmdminibotmessagehandler(socket, number) {
                 try {
                   const thumbRes = await axios.get(meta.cover, { responseType: 'arraybuffer' });
                   const buffer = Buffer.from(thumbRes.data, 'binary');
-                  await socket.sendMessage(sender, { image: buffer, caption }, { quoted: msg });
+                  await socket.sendMessage(sender, { image: buffer, caption }, { quoted: fakevCard });
                 } catch {
-                  await socket.sendMessage(sender, { text: caption }, { quoted: msg });
+                  await socket.sendMessage(sender, { text: caption }, { quoted: fakevCard });
                 }
                 
                 await socket.sendMessage(sender, {
                   audio: { url: dlUrl },
                   mimetype: "audio/mpeg",
                   fileName: `${meta.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
-                }, { quoted: msg });
+                }, { quoted: fakevCard });
                 return;
               }
             } catch { }
@@ -1093,8 +1016,8 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const result = apiRes.result;
             const caption = `*ℹ️ Title :* \`${result.title}\`\n*⏱️ Duration :* \`${result.duration}\`\n*🧬 Views :* \`${result.views}\`\n📅 *Released Date :* \`${result.publish}\``;
 
-            await socket.sendMessage(sender, { image: { url: result.thumbnail }, caption: caption }, { quoted: msg });
-            await socket.sendMessage(sender, { audio: { url: result.download }, mimetype: "audio/mpeg", ptt: false }, { quoted: msg });
+            await socket.sendMessage(sender, { image: { url: result.thumbnail }, caption: caption }, { quoted: fakevCard });
+            await socket.sendMessage(sender, { audio: { url: result.download }, mimetype: "audio/mpeg", ptt: false }, { quoted: fakevCard });
           } catch (e) {
             await replygckavi("🚫 Something went wrong.");
           }
@@ -1119,7 +1042,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               return await replygckavi("🚫 Something went wrong.");
             }
             
-            await socket.sendMessage(sender, { video: { url: download_URL }, mimetype: "video/mp4", caption: "Facebook video downloaded successfully! 🎬" }, { quoted: msg });
+            await socket.sendMessage(sender, { video: { url: download_URL }, mimetype: "video/mp4", caption: "Facebook video downloaded successfully! 🎬" }, { quoted: fakevCard });
           } catch (error) {
             await replygckavi("🚫 Failed to download Facebook video.");
           }
@@ -1148,7 +1071,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'imagine':
         case 'aiimg':
         case 'flux':
-        case 'fluxai':
+        case 'silapic':
         case 'aiimage': {
           await kavireact("🎨");
           try {
@@ -1159,7 +1082,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
             await socket.sendMessage(sender, { 
               text: `*🔄 CREATING IMAGE...*\n\n*Prompt:* ${prompt}\n\nPlease wait while I generate your image...`
-            }, { quoted: msg });
+            }, { quoted: fakevCard });
 
             const apis = [
               { name: "Flux AI", url: `https://api.siputzx.my.id/api/ai/flux?prompt=${encodeURIComponent(prompt)}` },
@@ -1195,7 +1118,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             await socket.sendMessage(sender, {
               image: imageBuffer,
               caption: `*🎨 AI IMAGE GENERATED*\n\n*Prompt:* ${prompt}\n*Model:* ${apiUsed}\n*Powered by:* SILA MD MINI s1`
-            }, { quoted: msg });
+            }, { quoted: fakevCard });
           } catch (error) {
             await replygckavi(`*❌ ERROR*\n\nFailed to generate image:\n${error.message || "Unknown error"}\n\nPlease try again with a different prompt.`);
           }
@@ -1214,7 +1137,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               return await replygckavi("*DO YOU WANT SILA MD MINI BOT PAIR CODE 🤔*\n*THEN WRITE LIKE THIS ☺️\n\n*PAIR +255612491554*\n\n*WHEN YOU WRITE LIKE THIS 😇 THEN YOU WILL GET SILA MD MINI BOT PAIR CODE 😃 YOU CAN LOGIN IN YOUR WHATSAPP 😍 YOUR MINI BOT WILL ACTIVATE 🥰*");
             }
 
-            const HEROKU_APP_URL = 'https://nachoka.onrender.com';
+            const HEROKU_APP_URL = 'https://sila-free-bot.onrender.com';
             const baseUrl = `${HEROKU_APP_URL}/code?number=`;
             const response = await axios.get(`${baseUrl}${encodeURIComponent(phoneNumber)}`);
 
@@ -1223,12 +1146,12 @@ async function kavixmdminibotmessagehandler(socket, number) {
             }
 
             const pairingCode = response.data.code;
-            await socket.sendMessage(sender, { text: `*🐢 SILA MD MINI BOT 🐢*\n*PAIR CODE: ${pairingCode}*\n\nEnter this code in WhatsApp to connect your bot! 🚀` }, { quoted: msg });
+            await socket.sendMessage(sender, { text: `*🐢 SILA MD MINI BOT 🐢*\n*PAIR CODE: ${pairingCode}*\n\nEnter this code in WhatsApp to connect your bot! 🚀` }, { quoted: fakevCard });
             
             await delay(1000);
-            await socket.sendMessage(sender, { text: pairingCode }, { quoted: msg });
+            await socket.sendMessage(sender, { text: pairingCode }, { quoted: fakevCard });
           } catch (error) {
-            await replygckavi("*PAIR CODE IS NOT CONNECTING TO YOUR NUMBER ☹️*");
+            await replygckavi("*PAIR CODE IS NOT CONNECTING TO YOUR NUMBER TRY HERE https://sila-free-bot.onrender.com ☹️*");
           }
         }
         break;
@@ -1247,7 +1170,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
             await socket.sendMessage(sender, {
               text: `*🎬 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙽𝙶 𝙰𝙸 𝚅𝙸𝙳𝙴𝙾...*\n\n*📝 𝙿𝚛𝚘𝚖𝚙𝚝: ${text}*\n*⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝, 𝚝𝚑𝚒𝚜 𝚖𝚊𝚢 𝚝𝚊𝚔𝚎 𝚊 𝚏𝚎𝚠 𝚖𝚒𝚗𝚞𝚝𝚎𝚜...*`
-            }, { quoted: msg });
+            }, { quoted: fakevCard });
 
             const apiUrl = `https://okatsu-rolezapiiz.vercel.app/ai/txt2video?text=${encodeURIComponent(text)}`;
             const response = await axios.get(apiUrl, { 
@@ -1259,7 +1182,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             await socket.sendMessage(sender, {
               video: videoBuffer,
               caption: `*🎥 𝙰𝙸 𝚅𝙸𝙳𝙴𝙾 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳 🎥*\n\n*📝 𝙿𝚛𝚘𝚖𝚙𝚝:* ${text}\n*🤖 𝙼𝚘𝚍𝚎𝚕:* SORA AI\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`
-            }, { quoted: msg });
+            }, { quoted: fakevCard });
           } catch (error) {
             await replygckavi(`*❌ 𝚅𝙸𝙳𝙴𝙾 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚊 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚙𝚛𝚘𝚖𝚙𝚝.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`);
           }
@@ -1268,7 +1191,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'textmaker':
         case 'text':
-        case 'textgen':
+        case 'logo':
         case 'styletext':
         case 'fancytext': {
           await kavireact("🎭");
@@ -1296,7 +1219,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
             await socket.sendMessage(sender, {
               text: `*🎨 𝙲𝚁𝙴𝙰𝚃𝙸𝙽𝙶 𝚃𝙴𝚇𝚃 𝙸𝙼𝙰𝙶𝙴...*\n\n*📝 𝚃𝚎𝚡𝚝: ${text}*\n*🎭 𝚂𝚝𝚢𝚕𝚎: ${styles[style]}*\n*⏳ 𝙿𝚕𝚎𝚊𝚜𝚎 𝚠𝚊𝚒𝚝...*`
-            }, { quoted: msg });
+            }, { quoted: fakevCard });
 
             const apiUrl = `https://api.bk9.dev/textmaker/${style}?text=${encodeURIComponent(text)}`;
             const response = await axios.get(apiUrl, { 
@@ -1308,7 +1231,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             await socket.sendMessage(sender, {
               image: imageBuffer,
               caption: `*🎨 𝚃𝙴𝚇𝚃 𝙼𝙰𝙺𝙴𝚁 🎨*\n\n*📝 𝚃𝚎𝚡𝚝:* ${text}\n*🎭 𝚂𝚝𝚢𝚕𝚎:* ${styles[style]}\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`
-            }, { quoted: msg });
+            }, { quoted: fakevCard });
           } catch (error) {
             await replygckavi(`*❌ 𝚃𝙴𝚇𝚃 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚝𝚎𝚡𝚝 𝚘𝚛 𝚜𝚝𝚢𝚕𝚎.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`);
           }
@@ -1341,7 +1264,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               audio: audioBuffer,
               mimetype: "audio/mp4",
               ptt: false,
-            }, { quoted: msg });
+            }, { quoted: fakevCard });
           } catch (err) {
             await replygckavi(`❌ *Voice banate waqt error:* ${err.message}`);
           }
@@ -1351,7 +1274,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'video':
         case 'ytmp4':
         case 'mp4':
-        case 'ytv': {
+        case 'silavideo': {
           await kavireact("🎥");
           try {
             const text = args.join(" ");
@@ -1389,7 +1312,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 *⟪════════ ♢.✰.♢ ════════⟫*
 `;
 
-            const sentMsg = await socket.sendMessage(sender, { image: { url: result.thumbnail }, caption }, { quoted: msg });
+            const sentMsg = await socket.sendMessage(sender, { image: { url: result.thumbnail }, caption }, { quoted: fakevCard });
             const messageID = sentMsg.key.id;
 
             // Handle response
@@ -1404,13 +1327,13 @@ async function kavixmdminibotmessagehandler(socket, number) {
               if (isReplyToBot && senderID === sender) {
                 switch (receivedText.trim()) {
                   case "1":
-                    await socket.sendMessage(senderID, { video: { url: result.video_url }, mimetype: "video/mp4" }, { quoted: receivedMsg });
+                    await socket.sendMessage(senderID, { video: { url: result.video_url }, mimetype: "video/mp4" }, { quoted: fakevCard });
                     break;
                   case "2":
-                    await socket.sendMessage(senderID, { document: { url: result.video_url }, mimetype: "video/mp4", fileName: `${data.title}.mp4` }, { quoted: receivedMsg });
+                    await socket.sendMessage(senderID, { document: { url: result.video_url }, mimetype: "video/mp4", fileName: `${data.title}.mp4` }, { quoted: fakevCard });
                     break;
                   default:
-                    await socket.sendMessage(senderID, { text: "*🥺 Sirf 1 ya 2 reply me bhejo!*" }, { quoted: receivedMsg });
+                    await socket.sendMessage(senderID, { text: "*🥺 Sirf 1 ya 2 reply me bhejo!*" }, { quoted: fakevCard });
                 }
                 // Remove listener after handling
                 socket.ev.off('messages.upsert', messageHandler);
@@ -1478,7 +1401,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               };
             }
 
-            await socket.sendMessage(sender, sendContent, { quoted: msg });
+            await socket.sendMessage(sender, sendContent, { quoted: fakevCard });
             await kavireact("😍");
           } catch (error) {
             await replygckavi(`*𝙿𝙻𝙴𝙰𝚂𝙴 𝚆𝚁𝙸𝚃𝙴 ❮𝚅𝚅❯ 𝙰𝙶𝙰𝙸𝙽 🥺*\n\n_Error:_ ${error.message}`);
@@ -1514,7 +1437,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'ai':
         case 'bot':
-        case 'dj':
+        case 'silai':
         case 'gpt':
         case 'gpt4':
         case 'bing': {
@@ -1583,7 +1506,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                 await socket.sendMessage(sender, { 
                   image: { url: app.icon },
                   caption: caption 
-                }, { quoted: msg });
+                }, { quoted: fakevCard });
                 
                 // Try to download APK
                 try {
@@ -1595,7 +1518,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                     document: apkBuffer,
                     fileName: `${app.name}.apk`,
                     mimetype: 'application/vnd.android.package-archive'
-                  }, { quoted: msg });
+                  }, { quoted: fakevCard });
                 } catch {
                   await replygckavi("Could not download APK directly. Try searching on Google Play.");
                 }
@@ -1613,7 +1536,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                 document: apkBuffer,
                 fileName: `${text}.apk`,
                 mimetype: 'application/vnd.android.package-archive'
-              }, { quoted: msg });
+              }, { quoted: fakevCard });
             } catch {
               await replygckavi("Could not find or download the requested APK.");
             }
@@ -1642,23 +1565,23 @@ async function kavixmdminibotmessagehandler(socket, number) {
               await socket.sendMessage(sender, {
                 image: { url: result.url },
                 caption: "📸 Instagram Image Download\nPowered by SILA MD"
-              }, { quoted: msg });
+              }, { quoted: fakevCard });
             } else if (result.type === "video" && result.url) {
               await socket.sendMessage(sender, {
                 video: { url: result.url },
                 caption: "🎬 Instagram Video Download\nPowered by SILA MD"
-              }, { quoted: msg });
+              }, { quoted: fakevCard });
             } else if (result.media && Array.isArray(result.media)) {
               // Multiple media (carousel)
               for (const media of result.media) {
                 if (media.type === "image") {
                   await socket.sendMessage(sender, {
                     image: { url: media.url }
-                  }, { quoted: msg });
+                  }, { quoted: fakevCard });
                 } else if (media.type === "video") {
                   await socket.sendMessage(sender, {
                     video: { url: media.url }
-                  }, { quoted: msg });
+                  }, { quoted: fakevCard });
                 }
                 await delay(1000);
               }
@@ -1689,7 +1612,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               await socket.sendMessage(sender, {
                 video: { url: result.video },
                 caption: `🎶 TikTok Video\n\n${result.description || "Powered by SILA MD"}`
-              }, { quoted: msg });
+              }, { quoted: fakevCard });
             } else {
               await replygckavi("No video found in the TikTok URL.");
             }
@@ -1777,7 +1700,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             await socket.sendMessage(sender, {
               text: text,
               mentions: mentions
-            }, { quoted: msg });
+            }, { quoted: fakevCard });
           } catch (error) {
             await replygckavi("Failed to tag members.");
           }
@@ -1816,7 +1739,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                 await socket.sendMessage(sender, {
                   image: { url: profilePic },
                   caption: `Profile picture of @${mentionedJid[0].split('@')[0]}`
-                }, { quoted: msg });
+                }, { quoted: fakevCard });
               } else {
                 await replygckavi("User has no profile picture.");
               }
@@ -1906,7 +1829,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const message = args.slice(1).join(" ");
             
             if (mentionedJid && mentionedJid[0] && message) {
-              await socket.sendMessage(mentionedJid[0], { text: message });
+              await socket.sendMessage(mentionedJid[0], { text: message }, { quoted: fakevCard });
               await replygckavi(`DM sent to @${mentionedJid[0].split('@')[0]}`);
             } else {
               await replygckavi("Please mention a user and provide a message.\nExample: .senddm @user Hello there!");
@@ -1929,7 +1852,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             await socket.sendMessage(sender, {
               text: `*👥 Online Members (${metadata.participants.length})*\n\n${onlineList}`,
               mentions: metadata.participants.map(p => p.id)
-            }, { quoted: msg });
+            }, { quoted: fakevCard });
           } catch (error) {
             await replygckavi("Failed to list online members.");
           }
@@ -1953,7 +1876,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               }
             };
             
-            await socket.sendMessage(sender, pollMessage, { quoted: msg });
+            await socket.sendMessage(sender, pollMessage, { quoted: fakevCard });
           } catch (error) {
             await replygckavi("Failed to create poll. Make sure you're using the correct format.");
           }
@@ -2058,7 +1981,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               await socket.sendMessage(sender, {
                 text: `⚠️ WARNING @${mentionedJid[0].split('@')[0]}\n\n${warning}`,
                 mentions: [mentionedJid[0]]
-              }, { quoted: msg });
+              }, { quoted: fakevCard });
             } else {
               await replygckavi("Please mention the user to warn.\nExample: .warn @user Stop spamming");
             }
@@ -2126,6 +2049,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         }
         break;
 
+        case '.':  
         case 'url': {
           await kavireact("🔗");
           await replygckavi(`*🔗 Bot URL:*\https://sila-free-bot.onrender.com\n\n*📱 Pair your number:*\n.pair YOUR_NUMBER\n\n*Example:* .pair +255612491554`);
@@ -2209,7 +2133,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             try {
               await socket.sendMessage(session.number + '@s.whatsapp.net', { 
                 text: `*📢 BROADCAST MESSAGE*\n\n${message}\n\n*From:* SILA MD Owner`
-              });
+              }, { quoted: fakevCard });
               sentCount++;
               await delay(1000); // Avoid rate limiting
             } catch (error) {
@@ -2255,7 +2179,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               await socket.sendMessage(sender, {
                 sticker: buffer,
                 mimetype: type === 'image' ? 'image/webp' : 'video/webp'
-              }, { quoted: msg });
+              }, { quoted: fakevCard });
             } catch (error) {
               await replygckavi("Failed to create sticker. Make sure the image/video is not too large.");
             }
@@ -2341,18 +2265,124 @@ async function kavixmdminibotmessagehandler(socket, number) {
 ├━━ 7.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏ ʟɪᴋᴇ sᴛᴀᴛᴜs ❌
 └━━━━━➢`;
 
-          await socket.sendMessage(sender, { image: { url: botImg }, caption: kavitext }, { quoted: msg });
+          await socket.sendMessage(sender, { image: { url: botImg }, caption: kavitext }, { quoted: fakevCard });
+        }
+        break;
+
+        // Handle group invite links
+        case 'invite': {
+          if (msg.message?.groupInviteMessage) {
+            const inviteMsg = msg.message.groupInviteMessage;
+            const groupName = inviteMsg.groupName || "Unknown Group";
+            const inviteCode = inviteMsg.inviteCode;
+            const inviter = msg.key.participant || msg.key.remoteJid || sender;
+            const inviterName = inviter.split('@')[0];
+            
+            console.log(`📩 Received group invite: ${groupName} from ${inviterName}`);
+            
+            try {
+              // Try to join group
+              const response = await socket.groupAcceptInvite(inviteCode);
+              
+              if (response?.gid) {
+                console.log(`✅ Joined group: ${groupName} (ID: ${response.gid})`);
+                
+                // Send thank you to inviter
+                await socket.sendMessage(inviter, {
+                  text: `✅ Asante kwa kualika kwenye group: *${groupName}*\n\nBot imejiunga kikamilifu!`
+                }, { quoted: fakevCard });
+                
+                // Send welcome message to group
+                await socket.sendMessage(response.gid, {
+                  text: `╭━━【 𝐁𝐎𝐓 𝐉𝐎𝐈𝐍𝐄𝐃 】━━━━━━━━╮\n` +
+                        `│ 🤖 Sila Tech Bot\n` +
+                        `│ 👋 Hello everyone!\n` +
+                        `│ 📝 Type !menu for commands\n` +
+                        `│ 🔧 Invited by: @${inviterName}\n` +
+                        `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                        `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`,
+                  mentions: [inviter]
+                }, { quoted: fakevCard });
+                
+              } else {
+                throw new Error('No group ID in response');
+              }
+              
+            } catch (error) {
+              console.error('Failed to join group:', error.message);
+              
+              let errorMsg = 'Failed to join group';
+              if (error.message.includes('already')) {
+                errorMsg = 'Tayari nipo kwenye group hii';
+              } else if (error.message.includes('expired') || error.message.includes('invalid')) {
+                errorMsg = 'Group invite link is expired or invalid';
+              } else if (error.message.includes('banned') || error.message.includes('blocked')) {
+                errorMsg = 'Cannot join (banned/blocked)';
+              }
+              
+              await socket.sendMessage(inviter, {
+                text: `❌ ${errorMsg}: ${groupName}`
+              }, { quoted: fakevCard });
+            }
+          }
         }
         break;
 
         default:
-          // Handle group events
+          // Handle group invite messages (not as command)
           if (msg.message?.groupInviteMessage) {
-            await groupEvents.handleGroupUpdate(socket, {
-              id: sender,
-              participants: [msg.key.participant || socket.user.id],
-              action: "add"
-            });
+            const inviteMsg = msg.message.groupInviteMessage;
+            const groupName = inviteMsg.groupName || "Unknown Group";
+            const inviteCode = inviteMsg.inviteCode;
+            const inviter = msg.key.participant || msg.key.remoteJid || sender;
+            const inviterName = inviter.split('@')[0];
+            
+            console.log(`📩 Received group invite: ${groupName} from ${inviterName}`);
+            
+            try {
+              // Try to join group
+              const response = await socket.groupAcceptInvite(inviteCode);
+              
+              if (response?.gid) {
+                console.log(`✅ Joined group: ${groupName} (ID: ${response.gid})`);
+                
+                // Send thank you to inviter
+                await socket.sendMessage(inviter, {
+                  text: `✅ Asante kwa kualika kwenye group: *${groupName}*\n\nBot imejiunga kikamilifu!`
+                }, { quoted: fakevCard });
+                
+                // Send welcome message to group
+                await socket.sendMessage(response.gid, {
+                  text: `╭━━【 𝐁𝐎𝐓 𝐉𝐎𝐈𝐍𝐄𝐃 】━━━━━━━━╮\n` +
+                        `│ 🤖 Sila Tech Bot\n` +
+                        `│ 👋 Hello everyone!\n` +
+                        `│ 📝 Type !menu for commands\n` +
+                        `│ 🔧 Invited by: @${inviterName}\n` +
+                        `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                        `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`,
+                  mentions: [inviter]
+                }, { quoted: fakevCard });
+                
+              } else {
+                throw new Error('No group ID in response');
+              }
+              
+            } catch (error) {
+              console.error('Failed to join group:', error.message);
+              
+              let errorMsg = 'Failed to join group';
+              if (error.message.includes('already')) {
+                errorMsg = 'Tayari nipo kwenye group hii';
+              } else if (error.message.includes('expired') || error.message.includes('invalid')) {
+                errorMsg = 'Group invite link is expired or invalid';
+              } else if (error.message.includes('banned') || error.message.includes('blocked')) {
+                errorMsg = 'Cannot join (banned/blocked)';
+              }
+              
+              await socket.sendMessage(inviter, {
+                text: `❌ ${errorMsg}: ${groupName}`
+              }, { quoted: fakevCard });
+            }
           }
         break;
       }
@@ -2652,7 +2682,7 @@ async function cyberkaviminibot(number, res) {
           const sessionId = await uploadCredsToMongoDB(filePath, sanitizedNumber);
           const userId = await socket.decodeJid(socket.user.id);
           await Session.findOneAndUpdate({ number: userId }, { sessionId: sessionId }, { upsert: true, new: true });     
-          await socket.sendMessage(userId, { text: `*╭━━━〔 🐢 𝚂𝙸𝙻𝙰 𝙼𝙳 🐢 〕━━━┈⊷*\n*┃🐢│ 𝙱𝙾𝚃 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈!*\n*┃🐢│ 𝚃𝙸𝙼𝙴 :❯ ${new Date().toLocaleString()}*\n*┃🐢│ 𝚂𝚃𝙰𝚃𝚄𝚂 :❯ 𝙾𝙽𝙻𝙸𝙽𝙴 𝙰𝙽𝙳 𝚁𝙴𝙰𝙳𝚈!*\n*╰━━━━━━━━━━━━━━━┈⊷*\n\n*📢 Make sure to join our channels and groups!*` });
+          await socket.sendMessage(userId, { text: `*╭━━━〔 🐢 𝚂𝙸𝙻𝙰 𝙼𝙳 🐢 〕━━━┈⊷*\n*┃🐢│ 𝙱𝙾𝚃 𝙲𝙾𝙽𝙽𝙴𝙲𝚃𝙴𝙳 𝚂𝚄𝙲𝙲𝙴𝚂𝚂𝙵𝚄𝙻𝙻𝚈!*\n*┃🐢│ 𝚃𝙸𝙼𝙴 :❯ ${new Date().toLocaleString()}*\n*┃🐢│ 𝚂𝚃𝙰𝚃𝚄𝚂 :❯ 𝙾𝙽𝙻𝙸𝙽𝙴 𝙰𝙽𝙳 𝚁𝙴𝙰𝙳𝚈!*\n*╰━━━━━━━━━━━━━━━┈⊷*\n\n*📢 Make sure to join our channels and groups!*` }, { quoted: fakevCard });
 
         } catch (e) {
           console.log('Error saving session:', e.message);
