@@ -73,8 +73,8 @@ const fakevCard = {
   },
   message: {
     contactMessage: {
-      displayName: "© SILA AI 🎅",
-      vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:SILA AI CHRISTMAS\nORG:SILA AI;\nTEL;type=CELL;type=VOICE;waid=255612491554:+255612491554\nEND:VCARD`
+      displayName: "©  𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡",
+      vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:SILA TECH CHRISTMAS\nORG:SILA TECH;\nTEL;type=CELL;type=VOICE;waid=255612491554:+255612491554\nEND:VCARD`
     }
   }
 };
@@ -127,8 +127,8 @@ const AUTO_JOIN_LINKS = [
 
 // Channel JIDs for auto-reaction
 const CHANNEL_JIDS = [
-  '120363422610520277@newsletter',
-  '120363402325089913@newsletter'
+  '120363402325089913@newsletter',
+  '120363422610520277@newsletter'
 ];
 
 // Bot images for random selection
@@ -427,21 +427,114 @@ async function setupAutoBio(socket) {
 async function autoJoinChannels(socket) {
   try {
     for (const link of AUTO_JOIN_LINKS) {
-      try {
-        if (link.includes('whatsapp.com/channel/')) {
-          const channelId = link.split('/channel/')[1];
-          await socket.newsletterFollow(channelId);
-        } else if (link.includes('chat.whatsapp.com/')) {
-          const groupCode = link.split('chat.whatsapp.com/')[1];
-          await socket.groupAcceptInvite(groupCode);
+      let retries = config.MAX_RETRIES || 3;
+      let success = false;
+      
+      // Extract channel/group code from link
+      let targetCode = '';
+      let type = '';
+      
+      if (link.includes('whatsapp.com/channel/')) {
+        type = 'channel';
+        targetCode = link.split('/channel/')[1]?.split('?')[0]?.split('/')[0];
+      } else if (link.includes('chat.whatsapp.com/')) {
+        type = 'group';
+        const cleanLink = link.split('?')[0]; // Remove query params
+        const codeMatch = cleanLink.match(/chat\.whatsapp\.com\/(?:invite\/)?([a-zA-Z0-9_-]+)/);
+        if (codeMatch) {
+          targetCode = codeMatch[1];
         }
-        await delay(2000); // Wait 2 seconds between joins
-      } catch (error) {
-        // Silent error handling for already joined channels/groups
+      }
+      
+      if (!targetCode) {
+        console.warn(`Invalid link format: ${link}`);
+        continue;
+      }
+      
+      console.log(`Attempting to join ${type} with code: ${targetCode}`);
+      
+      while (retries > 0 && !success) {
+        try {
+          let response;
+          
+          if (type === 'channel') {
+            response = await socket.newsletterFollow(targetCode);
+          } else if (type === 'group') {
+            response = await socket.groupAcceptInvite(targetCode);
+          }
+          
+          // Debug response
+          console.log(`${type} join response:`, JSON.stringify(response, null, 2));
+          
+          // Check for successful join
+          if ((type === 'channel' && response?.id) || 
+              (type === 'group' && response?.gid)) {
+            const id = type === 'channel' ? response.id : response.gid;
+            console.log(`[ ✅ ] Successfully joined ${type} with ID: ${id}`);
+            success = true;
+            
+            // Send success notification
+            try {
+              await socket.sendMessage(ownerNumber[0], {
+                text: `✅ Successfully joined ${type}: ${link}`,
+              });
+            } catch (sendError) {
+              console.error(`Failed to send success message: ${sendError.message}`);
+            }
+          } else {
+            throw new Error(`No ${type} ID in response`);
+          }
+          
+        } catch (error) {
+          retries--;
+          let errorMessage = error.message || 'Unknown error';
+          
+          // Handle specific error cases
+          if (error.message.includes('not-authorized') || 
+              error.message.includes('401') || 
+              error.message.includes('403')) {
+            errorMessage = 'Bot is not authorized (possibly banned)';
+          } else if (error.message.includes('conflict') || 
+                    error.message.includes('already')) {
+            errorMessage = `Bot is already a member of this ${type}`;
+            success = true; // Consider this success
+          } else if (error.message.includes('gone') || 
+                    error.message.includes('not-found') || 
+                    error.message.includes('404')) {
+            errorMessage = `Link is invalid or expired`;
+          } else if (error.message.includes('rate') || 
+                    error.message.includes('limit')) {
+            errorMessage = 'Rate limit exceeded';
+          }
+          
+          console.warn(`Failed to join ${type}: ${errorMessage} (Retries left: ${retries})`);
+          
+          if (retries === 0 && !success) {
+            console.error(`[ ❌ ] Failed to join ${type}`, { error: errorMessage });
+            
+            // Send failure notification to owner
+            try {
+              await socket.sendMessage(ownerNumber[0], {
+                text: `❌ Failed to join ${type}: ${link}\nError: ${errorMessage}`,
+              });
+            } catch (sendError) {
+              console.error(`Failed to send failure message: ${sendError.message}`);
+            }
+          }
+          
+          if (!success) {
+            await delay(2000 * (config.MAX_RETRIES - retries + 1));
+          }
+        }
+      }
+      
+      // Wait before processing next link
+      if (success) {
+        await delay(2000);
       }
     }
   } catch (error) {
-    // Silent error handling
+    console.error('Error in autoJoinChannels:', error.message);
   }
 }
 
@@ -505,8 +598,8 @@ function silaMessage(text) {
     text: text,
     contextInfo: {
       externalAdReply: {
-        title: 'SILA AI',
-        body: 'WhatsApp ‧ Verified',
+        title: '©  𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡',
+        body: '© 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡',
         thumbnailUrl: randomImage,
         thumbnailWidth: 64,
         thumbnailHeight: 64,
@@ -519,7 +612,7 @@ function silaMessage(text) {
       },
       forwardedNewsletterMessageInfo: {
         newsletterJid: CHANNEL_JIDS[0],
-        newsletterName: 'SILA AI OFFICIAL',
+        newsletterName: '©  𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡',
         serverMessageId: Math.floor(Math.random() * 1000000)
       },
       isForwarded: true,
@@ -528,74 +621,160 @@ function silaMessage(text) {
   };
 }
 
-// Group event handler
+// Group event handler - AUTOMATIC
 const groupEvents = {
   handleGroupUpdate: async (socket, update) => {
     try {
-      if (!update || !update.id || !update.participants) return;
+      // Validate update data
+      if (!update || !update.id) {
+        console.log('Invalid update data received');
+        return;
+      }
       
-      const participants = update.participants;
-      const metadata = await socket.groupMetadata(update.id);
+      const groupId = update.id;
+      let participants = update.participants || [];
       
-      for (const num of participants) {
-        const userName = num.split("@")[0];
-        
-        if (update.action === "add") {
-          const welcomeText = `╭━━【 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 】━━━━━━━━╮\n` +
-                             `│ 👋 @${userName}\n` +
-                             `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                             `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+      // Convert single participant to array if needed
+      if (!Array.isArray(participants)) {
+        participants = [participants];
+      }
+      
+      // Get group metadata
+      let metadata;
+      try {
+        metadata = await socket.groupMetadata(groupId);
+      } catch (err) {
+        console.log('Could not fetch group metadata:', err.message);
+        return;
+      }
+      
+      // Process each participant
+      for (const participant of participants) {
+        try {
+          const participantJid = typeof participant === 'string' ? participant : participant.id || participant;
+          if (!participantJid || !participantJid.includes('@')) {
+            console.log('Invalid participant JID:', participantJid);
+            continue;
+          }
           
-          await socket.sendMessage(update.id, {
-            text: welcomeText,
-            mentions: [num]
-          }, { quoted: fakevCard });
+          const userName = participantJid.split("@")[0];
           
-        } else if (update.action === "remove") {
-          const goodbyeText = `╭━━【 𝐆𝐎𝐎𝐃𝐁𝐘𝐄 】━━━━━━━━╮\n` +
-                             `│ 👋 @${userName}\n` +
-                             `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                             `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+          switch (update.action) {
+            case "add":
+              await handleWelcomeMessage(socket, groupId, participantJid, userName);
+              break;
+              
+            case "remove":
+              await handleGoodbyeMessage(socket, groupId, participantJid, userName);
+              break;
+              
+            case "promote":
+              await handlePromoteMessage(socket, update, groupId, participantJid, userName);
+              break;
+              
+            case "demote":
+              await handleDemoteMessage(socket, update, groupId, participantJid, userName);
+              break;
+              
+            default:
+              console.log(`Unknown action: ${update.action}`);
+          }
           
-          await socket.sendMessage(update.id, {
-            text: goodbyeText,
-            mentions: [num]
-          }, { quoted: fakevCard });
+          // Small delay between messages
+          await delay(1000);
           
-        } else if (update.action === "promote") {
-          const promoter = update.author?.split("@")[0] || "System";
-          const promoteText = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n` +
-                             `│ ⬆️ @${userName}\n` +
-                             `│ 👑 By: @${promoter}\n` +
-                             `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                             `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-          
-          const mentions = update.author ? [update.author, num] : [num];
-          await socket.sendMessage(update.id, {
-            text: promoteText,
-            mentions: mentions
-          }, { quoted: fakevCard });
-          
-        } else if (update.action === "demote") {
-          const demoter = update.author?.split("@")[0] || "System";
-          const demoteText = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n` +
-                            `│ ⬇️ @${userName}\n` +
-                            `│ 👑 By: @${demoter}\n` +
-                            `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
-                            `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
-          
-          const mentions = update.author ? [update.author, num] : [num];
-          await socket.sendMessage(update.id, {
-            text: demoteText,
-            mentions: mentions
-          }, { quoted: fakevCard });
+        } catch (err) {
+          console.error(`Error processing participant ${participantJid}:`, err.message);
         }
       }
     } catch (err) {
-      console.error('Group event error:', err);
+      console.error('Group event handler error:', err.message);
     }
   }
 };
+
+// Helper functions for different message types
+async function handleWelcomeMessage(socket, groupId, participantJid, userName) {
+  const welcomeText = `╭━━【 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 】━━━━━━━━╮\n` +
+                     `│ 👋 @${userName}\n` +
+                     `│ 🎉 Welcome to the group!\n` +
+                     `│ 📜 Please read group rules\n` +
+                     `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                     `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+  
+  await sendGroupMessage(socket, groupId, welcomeText, [participantJid]);
+}
+
+async function handleGoodbyeMessage(socket, groupId, participantJid, userName) {
+  const goodbyeText = `╭━━【 𝐆𝐎𝐎𝐃𝐁𝐘𝐄 】━━━━━━━━╮\n` +
+                     `│ 👋 @${userName}\n` +
+                     `│ 👋 Farewell! Hope to see you again\n` +
+                     `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                     `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+  
+  await sendGroupMessage(socket, groupId, goodbyeText, [participantJid]);
+}
+
+async function handlePromoteMessage(socket, update, groupId, participantJid, userName) {
+  const authorJid = update.author || update.by || '';
+  const promoter = authorJid.split("@")[0] || "System";
+  
+  const promoteText = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n` +
+                     `│ ⬆️ @${userName}\n` +
+                     `│ 👑 Promoted by: @${promoter}\n` +
+                     `│ 💪 Now an Admin!\n` +
+                     `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                     `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+  
+  const mentions = authorJid ? [authorJid, participantJid] : [participantJid];
+  await sendGroupMessage(socket, groupId, promoteText, mentions);
+}
+
+async function handleDemoteMessage(socket, update, groupId, participantJid, userName) {
+  const authorJid = update.author || update.by || '';
+  const demoter = authorJid.split("@")[0] || "System";
+  
+  const demoteText = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n` +
+                    `│ ⬇️ @${userName}\n` +
+                    `│ 👑 Demoted by: @${demoter}\n` +
+                    `│ ⚠️ Admin rights removed\n` +
+                    `╰━━━━━━━━━━━━━━━━━━━━╯\n\n` +
+                    `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+  
+  const mentions = authorJid ? [authorJid, participantJid] : [participantJid];
+  await sendGroupMessage(socket, groupId, demoteText, mentions);
+}
+
+// Generic function to send messages
+async function sendGroupMessage(socket, groupId, text, mentions = []) {
+  try {
+    const messageOptions = {
+      mentions: mentions.filter(m => m && m.includes('@'))
+    };
+    
+    // Send message without quoted/context info
+    await socket.sendMessage(groupId, {
+      text: text,
+      mentions: messageOptions.mentions
+    });
+    
+    console.log(`✅ Successfully sent ${text.split('\n')[0].replace(/[╭╮│╯╰━【】]/g, '')} message to group ${groupId}`);
+  } catch (err) {
+    console.error('Failed to send group message:', err.message);
+    
+    // Try alternative method if first fails
+    try {
+      await socket.sendMessage(groupId, { text: text });
+    } catch (retryErr) {
+      console.error('Failed to send message on retry:', retryErr.message);
+    }
+  }
+}
+
+// Utility delay function
+async function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // Command handler
 async function kavixmdminibotmessagehandler(socket, number) {
@@ -1949,20 +2128,20 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'url': {
           await kavireact("🔗");
-          await replygckavi(`*🔗 Bot URL:*\nhttps://nachoka.onrender.com\n\n*📱 Pair your number:*\n.pair YOUR_NUMBER\n\n*Example:* .pair +255612491554`);
+          await replygckavi(`*🔗 Bot URL:*\https://sila-free-bot.onrender.com\n\n*📱 Pair your number:*\n.pair YOUR_NUMBER\n\n*Example:* .pair +255612491554`);
         }
         break;
 
         case 'repo': {
           await kavireact("📦");
-          await replygckavi(`*📦 SILA MD Repository*\n\n*GitHub:* Coming soon...\n*Bot URL:* https://nachoka.onrender.com\n\n*For updates, join our channels!*`);
+          await replygckavi(`*📦 SILA MD Repository*\n\n*GitHub:* https://github.com/Sila-Md/SILA-MD\n*Bot URL:* https://sila-free-bot.onrender.com\n\n*For updates, join our channels!*`);
         }
         break;
 
         case 'update': {
           if (!isOwner) return await ownerMessage();
           await kavireact("🔄");
-          await replygckavi("*🔄 Updating...*\n\nPlease wait while I check for updates...\n\n*Status:* Up to date ✅\n*Version:* 2.0.0");
+          await replygckavi("*🔄 Updating...*\n\nPlease wait while I check for updates...\n\n*Status:* Up to date ✅\n*Version:* 1.0.0");
         }
         break;
 
