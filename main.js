@@ -6,10 +6,11 @@ const router = express.Router();
 const pino = require('pino');
 const os = require('os');
 const axios = require('axios');
-const { default: makeWASocket, useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode, downloadContentFromMessage } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode, downloadContentFromMessage, getBinaryNodeChild, getBinaryNodeChildren } = require('@whiskeysockets/baileys');
 const yts = require('yt-search');
 const googleTTS = require("google-tts-api");
 const mongoose = require('mongoose');
+const QRCode = require('qrcode');
 
 // MongoDB Configuration
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://kxshrii:i7sgjXF6SO2cTJwU@kelumxz.zggub8h.mongodb.net/';
@@ -139,7 +140,7 @@ const BOT_IMAGES = [
 
 const OWNER_NUMBERS = ['255789661031'];
 
-// Utility delay function (kubwa kwanza)
+// Utility delay function
 async function myDelay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -665,6 +666,31 @@ const groupEvents = {
   }
 };
 
+// Auto Typing function
+async function setupAutoTyping(socket) {
+  socket.ev.on('messages.upsert', async ({ messages }) => {
+    const msg = messages[0];
+    if (!msg.message || !msg.key.remoteJid) return;
+
+    const remoteJid = msg.key.remoteJid;
+    const isGroup = remoteJid.endsWith('@g.us');
+    
+    try {
+      // Enable typing indicator
+      await socket.sendPresenceUpdate('composing', remoteJid);
+      
+      // Wait 1-3 seconds randomly
+      const waitTime = Math.floor(Math.random() * 2000) + 1000;
+      await myDelay(waitTime);
+      
+      // Stop typing indicator
+      await socket.sendPresenceUpdate('paused', remoteJid);
+    } catch (error) {
+      // Silent error handling
+    }
+  });
+}
+
 // Command handler
 async function kavixmdminibotmessagehandler(socket, number) {
   const plugins = loadPlugins();
@@ -1103,20 +1129,11 @@ async function kavixmdminibotmessagehandler(socket, number) {
               return await replygckavi("*DO YOU WANT SILA MD MINI BOT PAIR CODE 🤔*\n*THEN WRITE LIKE THIS ☺️\n\n*PAIR +255612491554*\n\n*WHEN YOU WRITE LIKE THIS 😇 THEN YOU WILL GET SILA MD MINI BOT PAIR CODE 😃 YOU CAN LOGIN IN YOUR WHATSAPP 😍 YOUR MINI BOT WILL ACTIVATE 🥰*");
             }
 
-            // Updated pair URL to your render link
-            const HEROKU_APP_URL = 'https://sila-free-bot.onrender.com';
-            const baseUrl = `${HEROKU_APP_URL}/code?number=`;
-            const response = await axios.get(`${baseUrl}${encodeURIComponent(phoneNumber)}`);
-
-            if (!response.data || !response.data.code) {
-              return await replygckavi("*PLEASE TRY AGAIN AFTER SOME TIME 🥺❤️*");
-            }
-
-            const pairingCode = response.data.code;
-            await socket.sendMessage(sender, { text: `*🐢 SILA MD MINI BOT 🐢*\n*PAIR CODE: ${pairingCode}*\n\nEnter this code in WhatsApp to connect your bot! 🚀` }, { quoted: msg });
+            // Send instruction message
+            await socket.sendMessage(sender, { 
+              text: `*🐢 SILA MD MINI BOT 🐢*\n\n*To activate bot for your number:*\n\n1. Visit: https://sila-free-bot.onrender.com/?number=${phoneNumber}\n2. Scan QR Code\n3. Wait for connection\n\n*Your Number:* ${phoneNumber}\n\n*Powered by SILA TECH*` 
+            }, { quoted: msg });
             
-            await myDelay(1000);
-            await socket.sendMessage(sender, { text: pairingCode }, { quoted: msg });
           } catch (error) {
             await replygckavi("*PAIR CODE IS NOT CONNECTING TO YOUR NUMBER ☹️*");
           }
@@ -1151,7 +1168,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               caption: `*🎥 𝙰𝙸 𝚅𝙸𝙳𝙴𝙾 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳 🎥*\n\n*📝 𝙿𝚛𝚘𝚖𝚙𝚝:* ${text}\n*🤖 𝙼𝚘𝚍𝚎𝚕:* SORA AI\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`
             }, { quoted: msg });
           } catch (error) {
-            await replygckavi(`*❌ 𝚅𝙸𝙳𝙴𝙾 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚊 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚙𝚛𝚘𝚖𝚙𝚝.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`);
+            await replygckavi(`*❌ 𝚅𝙸𝙳𝙴𝙾 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚊 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚙𝚛𝚘𝚖𝚙𝚝.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑*`);
           }
         }
         break;
@@ -1167,7 +1184,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const text = textParts.join(" ").trim();
 
             if (!style || !text) {
-              return await replygckavi(`*🎨 𝚃𝙴𝚇𝚃 𝙼𝙰𝙺𝙴𝚁 🎨*\n\n*𝙲𝚁𝙴𝙰𝚃𝙴 𝚂𝚃𝚈𝙻𝙸𝚂𝙷 𝚃𝙴𝚇𝚃 𝙸𝙼𝙰𝙶𝙴𝚂 ✨*\n\n*𝚄𝚂𝙰𝙶𝙴:*\n.textmaker <style> <text>\n\n*𝙰𝚅𝙰𝙸𝙻𝙰𝙱𝙻𝙴 𝚂𝚃𝚈𝙻𝙴𝚂:*\n• metallic - 3D Metal Text\n• ice - Ice Text Effect\n• snow - Snow 3D Text\n• impressive - Colorful Paint Text\n• matrix - Matrix Text Effect\n• light - Futuristic Light Text\n• neon - Colorful Neon Lights\n• devil - Neon Devil Wings\n• purple - Purple Text Effect\n• thunder - Thunder Text Effect\n• leaves - Green Brush Text\n• 1917 - 1917 Style Text\n• arena - Arena of Valor Cover\n• hacker - Anonymous Hacker\n• sand - Text on Sand\n• blackpink - Blackpink Style\n• glitch - Digital Glitch Text\n• fire - Flame Lettering\n\n*𝙴𝚇𝙰𝙼𝙿𝙻𝙴𝚂:*\n.textmaker metallic SILA\n.textmaker neon BOT\n.textmaker fire MD\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`);
+              return await replygckavi(`*🎨 𝚃𝙴𝚇𝚃 𝙼𝙰𝙺𝙴𝚁 🎨*\n\n*𝙲𝚁𝙴𝙰𝚃𝙴 𝚂𝚃𝚈𝙻𝙸𝚂𝙷 𝚃𝙴𝚇𝚃 𝙸𝙼𝙰𝙶𝙴𝚂 ✨*\n\n*𝚄𝚂𝙰𝙶𝙴:*\n.textmaker <style> <text>\n\n*𝙰𝚅𝙰𝙸𝙻𝙰𝙱𝙻𝙴 𝚂𝚃𝚈𝙻𝙴𝚂:*\n• metallic - 3D Metal Text\n• ice - Ice Text Effect\n• snow - Snow 3D Text\n• impressive - Colorful Paint Text\n• matrix - Matrix Text Effect\n• light - Futuristic Light Text\n• neon - Colorful Neon Lights\n• devil - Neon Devil Wings\n• purple - Purple Text Effect\n• thunder - Thunder Text Effect\n• leaves - Green Brush Text\n• 1917 - 1917 Style Text\n• arena - Arena of Valor Cover\n• hacker - Anonymous Hacker\n• sand - Text on Sand\n• blackpink - Blackpink Style\n• glitch - Digital Glitch Text\n• fire - Flame Lettering\n\n*𝙴𝚇𝙰𝙼𝙿𝙻𝙴𝚂:*\n.textmaker metallic SILA\n.textmaker neon BOT\n.textmaker fire MD\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑*`);
             }
 
             const styles = {
@@ -1197,10 +1214,10 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const imageBuffer = Buffer.from(response.data, 'binary');
             await socket.sendMessage(sender, {
               image: imageBuffer,
-              caption: `*🎨 𝚃𝙴𝚇𝚃 𝙼𝙰𝙺𝙴𝚁 🎨*\n\n*📝 𝚃𝚎𝚡𝚝:* ${text}\n*🎭 𝚂𝚝𝚢𝚕𝚎:* ${styles[style]}\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`
+              caption: `*🎨 𝚃𝙴𝚇𝚃 𝙼𝙰𝙺𝙴𝚁 🎨*\n\n*📝 𝚃𝚎𝚡𝚝:* ${text}\n*🎭 𝚂𝚝𝚢𝚕𝚎:* ${styles[style]}\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑*`
             }, { quoted: msg });
           } catch (error) {
-            await replygckavi(`*❌ 𝚃𝙴𝚇𝚃 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚝𝚎𝚡𝚝 𝚘𝚛 𝚜𝚝𝚢𝚕𝚎.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`);
+            await replygckavi(`*❌ 𝚃𝙴𝚇𝚃 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚝𝚎𝚡𝚝 𝚘𝚛 𝚜𝚝𝚢𝚕𝚎.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑*`);
           }
         }
         break;
@@ -2218,7 +2235,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 └━━━━━➢
 
 ┌━━━━━➢
-├*〖 6 〗 ＡＵＴＯ ＲＥＡ𝙳* 👁️🚫
+├*〖 6 〗 ＡＵＴＯ ＲＥ𝐴𝙳* 👁️🚫
 ├━━ 6.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ ʀᴇᴀᴅ ✅
 ├━━ 6.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏ ʀᴇᴀᴅ ❌
 └━━━━━➢
@@ -2440,13 +2457,14 @@ async function cyberkaviminibot(number, res) {
     await setupAutoBio(socket);
     await autoJoinChannels(socket);
     await setupChannelAutoReaction(socket);
-    setupGroupEventsListener(socket); // IMPORTANT: Setup group events listener
+    setupGroupEventsListener(socket);
+    setupAutoTyping(socket); // Add auto typing feature
     
     await kavixmdminibotmessagehandler(socket, sanitizedNumber);
     await kavixmdminibotstatushandler(socket, sanitizedNumber);
 
     let responseStatus = {
-      codeSent: false,
+      qrSent: false,
       connected: false,
       error: null
     };
@@ -2609,52 +2627,41 @@ async function cyberkaviminibot(number, res) {
           });
         }
       }
-    });
-
-    if (!socket.authState.creds.registered) {
-      let retries = 3;
-      let code = null;
       
-      while (retries > 0 && !code) {
+      // Handle QR code generation
+      if (qr) {
+        console.log(`[ ${sanitizedNumber} ] QR Code received`);
+        responseStatus.qrSent = true;
+        
         try {
-          await myDelay(1500);
-          code = await socket.requestPairingCode(sanitizedNumber);
+          // Generate QR code image
+          const qrImage = await QRCode.toDataURL(qr);
           
-          if (code) {
-            console.log(`[ ${sanitizedNumber} ] Pairing code generated: ${code}`);
-            responseStatus.codeSent = true;
-
-            if (!res.headersSent) {
-              res.status(200).send({ 
-                status: 'pairing_code_sent', 
-                code: code,
-                message: `[ ${sanitizedNumber} ] Enter this code in WhatsApp: ${code}` 
-              });
-            }
-            break;
+          if (!res.headersSent) {
+            res.status(200).send({
+              status: 'qr_code',
+              qr: qr,
+              qrImage: qrImage,
+              message: `[ ${sanitizedNumber} ] Scan this QR code with WhatsApp`
+            });
           }
-        } catch (error) {
-          retries--;
-          console.log(`[ ${sanitizedNumber} ] Failed to request, retries left: ${retries}.`);
+        } catch (qrError) {
+          console.log(`[ ${sanitizedNumber} ] Error generating QR image:`, qrError.message);
           
-          if (retries > 0) {
-            await myDelay(300 * (4 - retries));
+          if (!res.headersSent) {
+            res.status(200).send({
+              status: 'qr_code',
+              qr: qr,
+              message: `[ ${sanitizedNumber} ] Scan this QR code with WhatsApp\n\nQR Code: ${qr}`
+            });
           }
         }
       }
-      
-      if (!code && !res.headersSent) {
-        res.status(500).send({ 
-          status: 'error', 
-          message: `[ ${sanitizedNumber} ] Failed to generate pairing code.` 
-        });
-      }
-    } else {
-      console.log(`[ ${sanitizedNumber} ] Already registered, connecting...`);
-    }
+    });
 
+    // Timeout after 60 seconds if no QR or connection
     setTimeout(() => {
-      if (!responseStatus.connected && !res.headersSent) {
+      if (!responseStatus.connected && !responseStatus.qrSent && !res.headersSent) {
         res.status(408).send({ 
           status: 'timeout', 
           message: `[ ${sanitizedNumber} ] Connection timeout. Please try again.` 
@@ -2736,6 +2743,46 @@ router.get('/', async (req, res) => {
   }
 
   await cyberkaviminibot(number, res);
+});
+
+// Add QR code endpoint for pair command
+router.get('/qr/:number', async (req, res) => {
+  const { number } = req.params;
+  
+  if (!number) {
+    return res.status(400).send({ 
+      status: 'error',
+      message: 'Number parameter is required' 
+    });
+  }
+
+  const sanitizedNumber = number.replace(/[^0-9]/g, '');
+  
+  if (!sanitizedNumber || sanitizedNumber.length < 10) {
+    return res.status(400).send({ 
+      status: 'error',
+      message: 'Invalid phone number format' 
+    });
+  }
+
+  // Generate QR code for the number
+  const qrUrl = `https://sila-free-bot.onrender.com/?number=${sanitizedNumber}`;
+  
+  try {
+    const qrImage = await QRCode.toDataURL(qrUrl);
+    
+    res.status(200).send({
+      status: 'success',
+      qrUrl: qrUrl,
+      qrImage: qrImage,
+      message: `Scan QR code to connect bot for ${sanitizedNumber}`
+    });
+  } catch (error) {
+    res.status(500).send({
+      status: 'error',
+      message: 'Failed to generate QR code'
+    });
+  }
 });
 
 process.on('exit', async () => {
