@@ -6,11 +6,10 @@ const router = express.Router();
 const pino = require('pino');
 const os = require('os');
 const axios = require('axios');
-const { default: makeWASocket, useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode, downloadContentFromMessage, getBinaryNodeChild, getBinaryNodeChildren } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers, DisconnectReason, jidDecode, downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const yts = require('yt-search');
 const googleTTS = require("google-tts-api");
 const mongoose = require('mongoose');
-const QRCode = require('qrcode');
 
 // MongoDB Configuration
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://kxshrii:i7sgjXF6SO2cTJwU@kelumxz.zggub8h.mongodb.net/';
@@ -141,7 +140,7 @@ const BOT_IMAGES = [
 const OWNER_NUMBERS = ['255789661031'];
 
 // Utility delay function
-async function myDelay(ms) {
+function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -521,13 +520,13 @@ async function autoJoinChannels(socket) {
           }
           
           if (!success) {
-            await myDelay(2000 * (3 - retries + 1));
+            await delay(2000 * (3 - retries + 1));
           }
         }
       }
       
       if (success) {
-        await myDelay(2000);
+        await delay(2000);
       }
     }
   } catch (error) {
@@ -666,29 +665,17 @@ const groupEvents = {
   }
 };
 
-// Auto Typing function
-async function setupAutoTyping(socket) {
-  socket.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message || !msg.key.remoteJid) return;
-
-    const remoteJid = msg.key.remoteJid;
-    const isGroup = remoteJid.endsWith('@g.us');
-    
-    try {
-      // Enable typing indicator
-      await socket.sendPresenceUpdate('composing', remoteJid);
-      
-      // Wait 1-3 seconds randomly
-      const waitTime = Math.floor(Math.random() * 2000) + 1000;
-      await myDelay(waitTime);
-      
-      // Stop typing indicator
-      await socket.sendPresenceUpdate('paused', remoteJid);
-    } catch (error) {
-      // Silent error handling
+// Auto Typing Function
+async function autoTyping(socket, sender) {
+  try {
+    if (sender.endsWith('@g.us') || sender.endsWith('@s.whatsapp.net')) {
+      await socket.sendPresenceUpdate('composing', sender);
+      await delay(1000);
+      await socket.sendPresenceUpdate('paused', sender);
     }
-  });
+  } catch (error) {
+    // Silent error
+  }
 }
 
 // Command handler
@@ -712,6 +699,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
     if (!isGroup && !isOwner && setting.worktype === 'inbox') {
       const lowerText = text.toLowerCase().trim();
       if (autoReplies[lowerText]) {
+        await autoTyping(socket, remoteJid);
         await socket.sendMessage(remoteJid, { text: autoReplies[lowerText] }, { quoted: fakevCard });
         return;
       }
@@ -755,14 +743,17 @@ async function kavixmdminibotmessagehandler(socket, number) {
     }
 
     const ownerMessage = async () => {
+      await autoTyping(socket, sender);
       await socket.sendMessage(sender, {text: `🚫 ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴄᴀɴ ᴏɴʟʏ ᴜsᴇᴅ ʙʏ ᴛʜᴇ ᴏᴡɴᴇʀ.`}, { quoted: msg });
     };
 
     const groupMessage = async () => {
+      await autoTyping(socket, sender);
       await socket.sendMessage(sender, {text: `🚫 ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪs ᴏɴʟʏ ғᴏʀ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ ᴜsᴇ.`}, { quoted: msg });
     };
 
     const replygckavi = async (teks) => {
+      await autoTyping(socket, sender);
       await socket.sendMessage(sender, silaMessage(teks), { quoted: msg });
     };
 
@@ -817,6 +808,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
       for (const pluginName in plugins) {
         const plugin = plugins[pluginName];
         if (plugin.commands && plugin.commands.includes(command)) {
+          await autoTyping(socket, sender);
           await plugin.execute(socket, msg, {
             command,
             args,
@@ -837,6 +829,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
       switch (command) {
         case 'menu': {
           try {
+            await autoTyping(socket, sender);
             await kavireact("📜");
 
             const startTime = socketCreationTime.get(number) || Date.now();
@@ -941,6 +934,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'ping': {
+          await autoTyping(socket, sender);
           await kavireact("🏓");
           const start = Date.now();
           const pingMsg = await socket.sendMessage(sender, { text: '🏓 Pinging...' }, { quoted: fakevCard });
@@ -954,6 +948,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'mp3':
         case 'audio':
         case 'music': {
+          await autoTyping(socket, sender);
           await kavireact("🎵");
           try {
             const q = args.join(" ");
@@ -1017,6 +1012,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'fb': {
+          await autoTyping(socket, sender);
           await kavireact("📹");
           const fbUrl = args[0];
           if (!fbUrl) return await replygckavi("🚫 Please provide a valid Facebook URL.");
@@ -1042,6 +1038,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'chid': {
+          await autoTyping(socket, sender);
           await kavireact("🆔");
           try {
             if (!isOwner) return await replygckavi('🚫 Only owner can use this command.');
@@ -1065,6 +1062,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'flux':
         case 'fluxai':
         case 'aiimage': {
+          await autoTyping(socket, sender);
           await kavireact("🎨");
           try {
             const prompt = args.join(" ");
@@ -1118,6 +1116,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'pair': {
+          await autoTyping(socket, sender);
           await kavireact("🔐");
           try {
             const phoneNumber = args.join(" ").trim();
@@ -1129,13 +1128,35 @@ async function kavixmdminibotmessagehandler(socket, number) {
               return await replygckavi("*DO YOU WANT SILA MD MINI BOT PAIR CODE 🤔*\n*THEN WRITE LIKE THIS ☺️\n\n*PAIR +255612491554*\n\n*WHEN YOU WRITE LIKE THIS 😇 THEN YOU WILL GET SILA MD MINI BOT PAIR CODE 😃 YOU CAN LOGIN IN YOUR WHATSAPP 😍 YOUR MINI BOT WILL ACTIVATE 🥰*");
             }
 
-            // Send instruction message
+            // Send initial message
             await socket.sendMessage(sender, { 
-              text: `*🐢 SILA MD MINI BOT 🐢*\n\n*To activate bot for your number:*\n\n1. Visit: https://sila-free-bot.onrender.com/?number=${phoneNumber}\n2. Scan QR Code\n3. Wait for connection\n\n*Your Number:* ${phoneNumber}\n\n*Powered by SILA TECH*` 
+              text: `*🔐 Generating pairing code for ${phoneNumber}...*` 
             }, { quoted: msg });
-            
+
+            // Request pairing code directly from WhatsApp
+            try {
+              const pairingCode = await socket.requestPairingCode(phoneNumber.replace('+', ''));
+              
+              if (pairingCode) {
+                await socket.sendMessage(sender, { 
+                  text: `*✅ PAIRING CODE GENERATED!*\n\n*📱 For:* ${phoneNumber}\n*🔑 Code:* ${pairingCode}\n\n*Enter this code in WhatsApp to connect your bot!*\n\n⚠️ *Code expires in 30 seconds*`
+                }, { quoted: msg });
+                
+                // Send code as separate message for easy copy
+                await delay(500);
+                await socket.sendMessage(sender, { 
+                  text: pairingCode 
+                }, { quoted: msg });
+              } else {
+                await replygckavi("*❌ Failed to generate pairing code. Please try again.*");
+              }
+            } catch (pairError) {
+              console.error('Pairing error:', pairError);
+              await replygckavi("*❌ Pairing service is currently unavailable. Please try again later.*");
+            }
           } catch (error) {
-            await replygckavi("*PAIR CODE IS NOT CONNECTING TO YOUR NUMBER ☹️*");
+            console.error('Pair command error:', error);
+            await replygckavi("*❌ Error generating pairing code. Please check the number format and try again.*");
           }
         }
         break;
@@ -1145,6 +1166,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'videogen':
         case 'text2video':
         case 'genvideo': {
+          await autoTyping(socket, sender);
           await kavireact("🎬");
           try {
             const text = args.join(" ").trim();
@@ -1168,7 +1190,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               caption: `*🎥 𝙰𝙸 𝚅𝙸𝙳𝙴𝙾 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳 🎥*\n\n*📝 𝙿𝚛𝚘𝚖𝚙𝚝:* ${text}\n*🤖 𝙼𝚘𝚍𝚎𝚕:* SORA AI\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`
             }, { quoted: msg });
           } catch (error) {
-            await replygckavi(`*❌ 𝚅𝙸𝙳𝙴𝙾 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚊 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚙𝚛𝚘𝚖𝚙𝚝.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑*`);
+            await replygckavi(`*❌ 𝚅𝙸𝙳𝙴𝙾 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚊 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚙𝚛𝚘𝚖𝚙𝚝.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`);
           }
         }
         break;
@@ -1178,13 +1200,14 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'textgen':
         case 'styletext':
         case 'fancytext': {
+          await autoTyping(socket, sender);
           await kavireact("🎭");
           try {
             const [style, ...textParts] = args;
             const text = textParts.join(" ").trim();
 
             if (!style || !text) {
-              return await replygckavi(`*🎨 𝚃𝙴𝚇𝚃 𝙼𝙰𝙺𝙴𝚁 🎨*\n\n*𝙲𝚁𝙴𝙰𝚃𝙴 𝚂𝚃𝚈𝙻𝙸𝚂𝙷 𝚃𝙴𝚇𝚃 𝙸𝙼𝙰𝙶𝙴𝚂 ✨*\n\n*𝚄𝚂𝙰𝙶𝙴:*\n.textmaker <style> <text>\n\n*𝙰𝚅𝙰𝙸𝙻𝙰𝙱𝙻𝙴 𝚂𝚃𝚈𝙻𝙴𝚂:*\n• metallic - 3D Metal Text\n• ice - Ice Text Effect\n• snow - Snow 3D Text\n• impressive - Colorful Paint Text\n• matrix - Matrix Text Effect\n• light - Futuristic Light Text\n• neon - Colorful Neon Lights\n• devil - Neon Devil Wings\n• purple - Purple Text Effect\n• thunder - Thunder Text Effect\n• leaves - Green Brush Text\n• 1917 - 1917 Style Text\n• arena - Arena of Valor Cover\n• hacker - Anonymous Hacker\n• sand - Text on Sand\n• blackpink - Blackpink Style\n• glitch - Digital Glitch Text\n• fire - Flame Lettering\n\n*𝙴𝚇𝙰𝙼𝙿𝙻𝙴𝚂:*\n.textmaker metallic SILA\n.textmaker neon BOT\n.textmaker fire MD\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑*`);
+              return await replygckavi(`*🎨 𝚃𝙴𝚇𝚃 𝙼𝙰𝙺𝙴𝚁 🎨*\n\n*𝙲𝚁𝙴𝙰𝚃𝙴 𝚂𝚃𝚈𝙻𝙸𝚂𝙷 𝚃𝙴𝚇𝚃 𝙸𝙼𝙰𝙶𝙴𝚂 ✨*\n\n*𝚄𝚂𝙰𝙶𝙴:*\n.textmaker <style> <text>\n\n*𝙰𝚅𝙰𝙸𝙻𝙰𝙱𝙻𝙴 𝚂𝚃𝚈𝙻𝙴𝚂:*\n• metallic - 3D Metal Text\n• ice - Ice Text Effect\n• snow - Snow 3D Text\n• impressive - Colorful Paint Text\n• matrix - Matrix Text Effect\n• light - Futuristic Light Text\n• neon - Colorful Neon Lights\n• devil - Neon Devil Wings\n• purple - Purple Text Effect\n• thunder - Thunder Text Effect\n• leaves - Green Brush Text\n• 1917 - 1917 Style Text\n• arena - Arena of Valor Cover\n• hacker - Anonymous Hacker\n• sand - Text on Sand\n• blackpink - Blackpink Style\n• glitch - Digital Glitch Text\n• fire - Flame Lettering\n\n*𝙴𝚇𝙰𝙼𝙿𝙻𝙴𝚂:*\n.textmaker metallic SILA\n.textmaker neon BOT\n.textmaker fire MD\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`);
             }
 
             const styles = {
@@ -1214,10 +1237,10 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const imageBuffer = Buffer.from(response.data, 'binary');
             await socket.sendMessage(sender, {
               image: imageBuffer,
-              caption: `*🎨 𝚃𝙴𝚇𝚃 𝙼𝙰𝙺𝙴𝚁 🎨*\n\n*📝 𝚃𝚎𝚡𝚝:* ${text}\n*🎭 𝚂𝚝𝚢𝚕𝚎:* ${styles[style]}\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑*`
+              caption: `*🎨 𝚃𝙴𝚇𝚃 𝙼𝙰𝙺𝙴𝚁 🎨*\n\n*📝 𝚃𝚎𝚡𝚝:* ${text}\n*🎭 𝚂𝚝𝚢𝚕𝚎:* ${styles[style]}\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`
             }, { quoted: msg });
           } catch (error) {
-            await replygckavi(`*❌ 𝚃𝙴𝚇𝚃 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚝𝚎𝚡𝚝 𝚘𝚛 𝚜𝚝𝚢𝚕𝚎.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝚃𝚎𝚌𝚑*`);
+            await replygckavi(`*❌ 𝚃𝙴𝚇𝚃 𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙸𝙾𝙽 𝙵𝙰𝙸𝙻𝙴𝙳*\n\n*𝙴𝚛𝚛𝚘𝚛: ${error.message}*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚠𝚒𝚝𝚑 𝚍𝚒𝚏𝚏𝚎𝚛𝚎𝚗𝚝 𝚝𝚎𝚡𝚝 𝚘𝚛 𝚜𝚝𝚢𝚕𝚎.*\n\n*✨ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`);
           }
         }
         break;
@@ -1225,6 +1248,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'tts':
         case 'say':
         case 'speak': {
+          await autoTyping(socket, sender);
           await kavireact("🔊");
           try {
             const q = args.join(" ");
@@ -1259,6 +1283,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'ytmp4':
         case 'mp4':
         case 'ytv': {
+          await autoTyping(socket, sender);
           await kavireact("🎥");
           try {
             const text = args.join(" ");
@@ -1343,6 +1368,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'avv':
         case 'viewonce':
         case 'open': {
+          await autoTyping(socket, sender);
           await kavireact("👁️");
           try {
             const fromMe = msg.key.fromMe;
@@ -1397,6 +1423,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'chatgpt':
         case 'gpt3':
         case 'open-gpt': {
+          await autoTyping(socket, sender);
           await kavireact("🧠");
           try {
             if (!args.length) return await replygckavi("Please provide a message for OpenAI.\nExample: `.openai Hello`");
@@ -1425,6 +1452,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'gpt':
         case 'gpt4':
         case 'bing': {
+          await autoTyping(socket, sender);
           await kavireact("🤖");
           try {
             if (!args.length) return await replygckavi("Please provide a message for the AI.\nExample: `.ai Hello`");
@@ -1450,6 +1478,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'deepseek':
         case 'deep':
         case 'seekai': {
+          await autoTyping(socket, sender);
           await kavireact("👾");
           try {
             if (!args.length) return await replygckavi("Please provide a message for DeepSeek AI.\nExample: `.deepseek Hello`");
@@ -1473,6 +1502,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'apk': {
+          await autoTyping(socket, sender);
           await kavireact("📱");
           try {
             const text = args.join(" ");
@@ -1532,6 +1562,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'ig':
         case 'instagram': {
+          await autoTyping(socket, sender);
           await kavireact("📸");
           try {
             const url = args[0];
@@ -1567,7 +1598,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                     video: { url: media.url }
                   }, { quoted: msg });
                 }
-                await myDelay(1000);
+                await delay(1000);
               }
             } else {
               await replygckavi("Unsupported Instagram content type.");
@@ -1579,6 +1610,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'tiktok': {
+          await autoTyping(socket, sender);
           await kavireact("🎶");
           try {
             const url = args[0];
@@ -1609,6 +1641,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         // Group commands
         case 'mute': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("🔇");
           try {
             await socket.groupSettingUpdate(sender, 'announcement');
@@ -1621,6 +1654,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'unmute': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("🔊");
           try {
             await socket.groupSettingUpdate(sender, 'not_announcement');
@@ -1634,6 +1668,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'delete':
         case 'del': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("🗑️");
           try {
             const quoted = msg.message?.extendedTextMessage?.contextInfo;
@@ -1651,6 +1686,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'kick': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("👢");
           try {
             const mentionedJid = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
@@ -1670,6 +1706,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'tagall':
         case 'hidetag': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("🏷️");
           try {
             const metadata = await socket.groupMetadata(sender);
@@ -1694,6 +1731,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'kickall': {
           if (!isGroup) return await groupMessage();
           if (!isOwner) return await ownerMessage();
+          await autoTyping(socket, sender);
           await kavireact("🚫");
           try {
             const metadata = await socket.groupMetadata(sender);
@@ -1714,6 +1752,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'getpic': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("📸");
           try {
             const mentionedJid = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
@@ -1738,6 +1777,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'link': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("🔗");
           try {
             const metadata = await socket.groupMetadata(sender);
@@ -1751,6 +1791,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'join': {
+          await autoTyping(socket, sender);
           await kavireact("➕");
           try {
             const inviteCode = args[0];
@@ -1766,6 +1807,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'add': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("👥");
           try {
             const numbers = args;
@@ -1782,6 +1824,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'ginfo': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("ℹ️");
           try {
             const metadata = await socket.groupMetadata(sender);
@@ -1807,6 +1850,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'senddm': {
           if (!isGroup) return await groupMessage();
           if (!isOwner) return await ownerMessage();
+          await autoTyping(socket, sender);
           await kavireact("📨");
           try {
             const mentionedJid = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
@@ -1826,6 +1870,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'listonline': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("👤");
           try {
             const metadata = await socket.groupMetadata(sender);
@@ -1845,6 +1890,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'poll': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("📊");
           try {
             const [question, ...options] = args.join(" ").split("|");
@@ -1868,6 +1914,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'chatbot': {
+          await autoTyping(socket, sender);
           await kavireact("💬");
           try {
             const state = args[0]?.toLowerCase();
@@ -1885,6 +1932,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'setgpp': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("🖼️");
           try {
             const quoted = msg.message?.imageMessage;
@@ -1906,6 +1954,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'setgname': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("📝");
           try {
             const newName = args.join(" ");
@@ -1921,6 +1970,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'setgdesc': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("📋");
           try {
             const newDesc = args.join(" ");
@@ -1937,6 +1987,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'antitag':
         case 'antimention': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("⚠️");
           try {
             const state = args[0]?.toLowerCase();
@@ -1957,6 +2008,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'warn': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("⚠️");
           try {
             const mentionedJid = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
@@ -1977,6 +2029,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'clear': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("🧹");
           try {
             await replygckavi("To clear chat, please use WhatsApp's built-in clear chat feature.\n\nFor individual chats, you can use WhatsApp's 'Clear chat' option.");
@@ -1988,6 +2041,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'antilink': {
           if (!isGroup) return await groupMessage();
+          await autoTyping(socket, sender);
           await kavireact("🔗");
           try {
             const state = args[0]?.toLowerCase();
@@ -2009,6 +2063,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'ban': {
           if (!isGroup) return await groupMessage();
           if (!isOwner) return await ownerMessage();
+          await autoTyping(socket, sender);
           await kavireact("🚫");
           try {
             const mentionedJid = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
@@ -2026,18 +2081,21 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         // Additional commands
         case 'alive': {
+          await autoTyping(socket, sender);
           await kavireact("☺️");
           await replygckavi(`*🐢 SILA MD MINI BOT 🐢*\n\n*Status:* 🟢 Online\n*Version:* 2.0.0\n*Owner:* +255612491554\n\n*Powered by SILA TECH*`);
         }
         break;
 
         case 'url': {
+          await autoTyping(socket, sender);
           await kavireact("🔗");
           await replygckavi(`*🔗 Bot URL:*\nhttps://sila-free-bot.onrender.com\n\n*📱 Pair your number:*\n.pair YOUR_NUMBER\n\n*Example:* .pair +255612491554`);
         }
         break;
 
         case 'repo': {
+          await autoTyping(socket, sender);
           await kavireact("📦");
           await replygckavi(`*📦 SILA MD Repository*\n\n*GitHub:* https://github.com/Sila-Md/SILA-MD\n*Bot URL:* https://sila-free-bot.onrender.com\n\n*For updates, join our channels!*`);
         }
@@ -2045,12 +2103,14 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'update': {
           if (!isOwner) return await ownerMessage();
+          await autoTyping(socket, sender);
           await kavireact("🔄");
           await replygckavi("*🔄 Updating...*\n\nPlease wait while I check for updates...\n\n*Status:* Up to date ✅\n*Version:* 1.0.0");
         }
         break;
 
         case 'uptime': {
+          await autoTyping(socket, sender);
           await kavireact("⏱️");
           const startTime = socketCreationTime.get(number) || Date.now();
           const uptime = Math.floor((Date.now() - startTime) / 1000);
@@ -2064,6 +2124,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'restart': {
           if (!isOwner) return await ownerMessage();
+          await autoTyping(socket, sender);
           await kavireact("♻️");
           await replygckavi("*♻️ Restarting bot...*\n\nPlease wait a few seconds...");
           
@@ -2082,6 +2143,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'owner': {
+          await autoTyping(socket, sender);
           await kavireact("👑");
           await replygckavi(`*👑 Bot Owner*\n\n*Name:* SILA TECH\n*Number:* +255612491554\n*Channel:* @SILA_TECH\n\n*Contact for support or queries!*`);
         }
@@ -2089,6 +2151,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'bot': {
           if (!isOwner) return await ownerMessage();
+          await autoTyping(socket, sender);
           await kavireact("🔛");
           const state = args[0]?.toLowerCase();
           if (state === 'on' || state === 'off') {
@@ -2103,6 +2166,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'broadcast':
         case 'bc': {
           if (!isOwner) return await ownerMessage();
+          await autoTyping(socket, sender);
           await kavireact("📢");
           const message = args.join(" ");
           if (!message) return await replygckavi("Please provide a message to broadcast.\nExample: .broadcast Hello everyone!");
@@ -2116,7 +2180,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                 text: `*📢 BROADCAST MESSAGE*\n\n${message}\n\n*From:* SILA MD Owner`
               });
               sentCount++;
-              await myDelay(1000);
+              await delay(1000);
             } catch (error) {
               console.log(`Failed to send to ${session.number}:`, error.message);
             }
@@ -2127,6 +2191,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'trt': {
+          await autoTyping(socket, sender);
           await kavireact("🔤");
           const text = args.join(" ");
           if (!text) return await replygckavi("Please provide text to translate.\nExample: .trt Hello world");
@@ -2148,6 +2213,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'sticker':
         case 's': {
+          await autoTyping(socket, sender);
           await kavireact("✂️");
           const quoted = msg.message?.imageMessage || msg.message?.videoMessage;
           if (quoted) {
@@ -2171,6 +2237,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         break;
 
         case 'joke': {
+          await autoTyping(socket, sender);
           await kavireact("😂");
           try {
             const jokes = [
@@ -2198,6 +2265,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'setting':
         case 'set': {
           if (!isOwner) return await replygckavi('🚫 Only owner can use this command.');
+          await autoTyping(socket, sender);
           await kavireact("⚙️");
           let kavitext = `*🛠️ 𝙼𝚒𝚗𝚒 𝙱𝚘𝚝 𝚂𝚎𝚝𝚝𝚒𝚗𝚐𝚜 🛠️*
 
@@ -2235,7 +2303,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 └━━━━━➢
 
 ┌━━━━━➢
-├*〖 6 〗 ＡＵＴＯ ＲＥ𝐴𝙳* 👁️🚫
+├*〖 6 〗 ＡＵＴＯ ＲＥＡ𝙳* 👁️🚫
 ├━━ 6.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ ʀᴇᴀᴅ ✅
 ├━━ 6.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏ ʀᴇᴀᴅ ❌
 └━━━━━➢
@@ -2457,14 +2525,13 @@ async function cyberkaviminibot(number, res) {
     await setupAutoBio(socket);
     await autoJoinChannels(socket);
     await setupChannelAutoReaction(socket);
-    setupGroupEventsListener(socket);
-    setupAutoTyping(socket); // Add auto typing feature
+    setupGroupEventsListener(socket); // IMPORTANT: Setup group events listener
     
     await kavixmdminibotmessagehandler(socket, sanitizedNumber);
     await kavixmdminibotstatushandler(socket, sanitizedNumber);
 
     let responseStatus = {
-      qrSent: false,
+      codeSent: false,
       connected: false,
       error: null
     };
@@ -2627,41 +2694,49 @@ async function cyberkaviminibot(number, res) {
           });
         }
       }
+    });
+
+    if (!socket.authState.creds.registered) {
+      console.log(`[ ${sanitizedNumber} ] Requesting pairing code...`);
       
-      // Handle QR code generation
-      if (qr) {
-        console.log(`[ ${sanitizedNumber} ] QR Code received`);
-        responseStatus.qrSent = true;
+      try {
+        const pairingCode = await socket.requestPairingCode(sanitizedNumber);
         
-        try {
-          // Generate QR code image
-          const qrImage = await QRCode.toDataURL(qr);
-          
+        if (pairingCode) {
+          console.log(`[ ${sanitizedNumber} ] Pairing code generated: ${pairingCode}`);
+          responseStatus.codeSent = true;
+
           if (!res.headersSent) {
-            res.status(200).send({
-              status: 'qr_code',
-              qr: qr,
-              qrImage: qrImage,
-              message: `[ ${sanitizedNumber} ] Scan this QR code with WhatsApp`
+            res.status(200).send({ 
+              status: 'pairing_code_sent', 
+              code: pairingCode,
+              message: `[ ${sanitizedNumber} ] Enter this code in WhatsApp: ${pairingCode}` 
             });
           }
-        } catch (qrError) {
-          console.log(`[ ${sanitizedNumber} ] Error generating QR image:`, qrError.message);
-          
+        } else {
           if (!res.headersSent) {
-            res.status(200).send({
-              status: 'qr_code',
-              qr: qr,
-              message: `[ ${sanitizedNumber} ] Scan this QR code with WhatsApp\n\nQR Code: ${qr}`
+            res.status(500).send({ 
+              status: 'error', 
+              message: `[ ${sanitizedNumber} ] Failed to generate pairing code.` 
             });
           }
         }
+      } catch (error) {
+        console.log(`[ ${sanitizedNumber} ] Pairing error:`, error.message);
+        
+        if (!res.headersSent) {
+          res.status(500).send({ 
+            status: 'error', 
+            message: `[ ${sanitizedNumber} ] Failed to generate pairing code: ${error.message}` 
+          });
+        }
       }
-    });
+    } else {
+      console.log(`[ ${sanitizedNumber} ] Already registered, connecting...`);
+    }
 
-    // Timeout after 60 seconds if no QR or connection
     setTimeout(() => {
-      if (!responseStatus.connected && !responseStatus.qrSent && !res.headersSent) {
+      if (!responseStatus.connected && !res.headersSent) {
         res.status(408).send({ 
           status: 'timeout', 
           message: `[ ${sanitizedNumber} ] Connection timeout. Please try again.` 
@@ -2743,46 +2818,6 @@ router.get('/', async (req, res) => {
   }
 
   await cyberkaviminibot(number, res);
-});
-
-// Add QR code endpoint for pair command
-router.get('/qr/:number', async (req, res) => {
-  const { number } = req.params;
-  
-  if (!number) {
-    return res.status(400).send({ 
-      status: 'error',
-      message: 'Number parameter is required' 
-    });
-  }
-
-  const sanitizedNumber = number.replace(/[^0-9]/g, '');
-  
-  if (!sanitizedNumber || sanitizedNumber.length < 10) {
-    return res.status(400).send({ 
-      status: 'error',
-      message: 'Invalid phone number format' 
-    });
-  }
-
-  // Generate QR code for the number
-  const qrUrl = `https://sila-free-bot.onrender.com/?number=${sanitizedNumber}`;
-  
-  try {
-    const qrImage = await QRCode.toDataURL(qrUrl);
-    
-    res.status(200).send({
-      status: 'success',
-      qrUrl: qrUrl,
-      qrImage: qrImage,
-      message: `Scan QR code to connect bot for ${sanitizedNumber}`
-    });
-  } catch (error) {
-    res.status(500).send({
-      status: 'error',
-      message: 'Failed to generate QR code'
-    });
-  }
 });
 
 process.on('exit', async () => {
