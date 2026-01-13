@@ -73,7 +73,7 @@ const fakevCard = {
   },
   message: {
     contactMessage: {
-      displayName: "© SILA AI 🎅",
+      displayName: "© SILA MD",
       vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:SILA AI CHRISTMAS\nORG:SILA AI;\nTEL;type=CELL;type=VOICE;waid=255612491554:+255612491554\nEND:VCARD`
     }
   }
@@ -510,21 +510,21 @@ function silaMessage(text) {
     text: text,
     contextInfo: {
       externalAdReply: {
-        title: 'SILA AI',
-        body: 'WhatsApp ‧ Verified',
-        thumbnailUrl: randomImage,
+        title: 'SILA MD',
+        body: '𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡',
+        thumbnailUrl: 'https://files.catbox.moe/277zt9.jpg',
         thumbnailWidth: 64,
         thumbnailHeight: 64,
         sourceUrl: 'https://whatsapp.com/channel/0029VbBG4gfISTkCpKxyMH02',
-        mediaUrl: randomImage,
+        mediaUrl: 'https://files.catbox.moe/277zt9.jpg',
         showAdAttribution: true,
         renderLargerThumbnail: false,
         previewType: 'PHOTO',
         mediaType: 1
       },
       forwardedNewsletterMessageInfo: {
-        newsletterJid: CHANNEL_JIDS[0],
-        newsletterName: 'SILA AI OFFICIAL',
+        newsletterJid: '120363402325089913@newsletter',
+        newsletterName: 'SILA MD',
         serverMessageId: Math.floor(Math.random() * 1000000)
       },
       isForwarded: true,
