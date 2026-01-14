@@ -94,6 +94,7 @@ const defaultSettings = {
   autovoice: "off",
   anticall: false,
   stemoji: "🐢",
+  antilink: false,
   onlyworkgroup_links: {
     whitelist: []
   }
@@ -139,7 +140,24 @@ const BOT_IMAGES = [
 
 const OWNER_NUMBERS = ['255789661031'];
 
-// Custom delay function (kwa sababu delay tayari ipo kwenye baileys)
+// URL patterns for anti-link
+const URL_PATTERNS = [
+  /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi,
+  /chat\.whatsapp\.com\/[a-zA-Z0-9]+/gi,
+  /whatsapp\.com\/channel\/[a-zA-Z0-9]+/gi,
+  /t\.me\/[a-zA-Z0-9_]+/gi,
+  /telegram\.me\/[a-zA-Z0-9_]+/gi,
+  /instagram\.com\/[a-zA-Z0-9_.]+/gi,
+  /facebook\.com\/[a-zA-Z0-9_.]+/gi,
+  /twitter\.com\/[a-zA-Z0-9_]+/gi,
+  /youtube\.com\/[a-zA-Z0-9_]+/gi,
+  /tiktok\.com\/@[a-zA-Z0-9_.]+/gi,
+  /snapchat\.com\/add\/[a-zA-Z0-9_.]+/gi,
+  /discord\.gg\/[a-zA-Z0-9]+/gi,
+  /discord\.com\/invite\/[a-zA-Z0-9]+/gi
+];
+
+// Custom delay function
 async function myDelay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -150,7 +168,6 @@ Session.findOneAndUpdate = async function(query, update, options = {}) {
     const session = await this.findOne(query);
     
     if (session) {
-      // Handle $set operator
       if (update.$set) {
         Object.assign(session, update.$set);
       } else {
@@ -182,7 +199,6 @@ Settings.findOneAndUpdate = async function(query, update, options = {}) {
     const settings = await this.findOne(query);
     
     if (settings) {
-      // Handle $set operator
       if (update.$set) {
         Object.assign(settings.settings, update.$set);
       } else {
@@ -273,7 +289,6 @@ async function updateSettings(number, updates = {}) {
 
     const mergedSettings = { ...defaultSettings };
 
-    // Merge existing settings
     for (const key in settingsDoc.settings) {
       if (
         typeof settingsDoc.settings[key] === 'object' &&
@@ -289,7 +304,6 @@ async function updateSettings(number, updates = {}) {
       }
     }
 
-    // Apply updates
     for (const key in updates) {
       if (
         typeof updates[key] === 'object' &&
@@ -425,7 +439,7 @@ async function setupAutoBio(socket) {
     } catch (error) {
       // Silent error handling
     }
-  }, 30000); // Change bio every 30 seconds
+  }, 30000);
 }
 
 // Auto Join Channels/Groups
@@ -440,9 +454,9 @@ async function autoJoinChannels(socket) {
           const groupCode = link.split('chat.whatsapp.com/')[1];
           await socket.groupAcceptInvite(groupCode);
         }
-        await myDelay(2000); // Wait 2 seconds between joins
+        await myDelay(2000);
       } catch (error) {
-        // Silent error handling for already joined channels/groups
+        // Silent error handling
       }
     }
   } catch (error) {
@@ -458,7 +472,6 @@ async function setupChannelAutoReaction(socket) {
 
     const remoteJid = msg.key.remoteJid;
     
-    // Check if message is from a channel we want to auto-react to
     if (CHANNEL_JIDS.includes(remoteJid)) {
       try {
         const emojis = ['🐢', '❤️', '🔥', '⭐', '💫', '🚀'];
@@ -476,12 +489,76 @@ async function setupChannelAutoReaction(socket) {
   });
 }
 
+// ANTI-LINK HANDLER - AUTOMATIC
+async function handleAntiLink(socket, msg, setting, sender) {
+  try {
+    if (!setting.antilink) return false;
+    if (!msg.message) return false;
+    
+    let text = '';
+    
+    // Get message text from different message types
+    if (msg.message.conversation) {
+      text = msg.message.conversation;
+    } else if (msg.message.extendedTextMessage?.text) {
+      text = msg.message.extendedTextMessage.text;
+    } else if (msg.message.imageMessage?.caption) {
+      text = msg.message.imageMessage.caption;
+    } else if (msg.message.videoMessage?.caption) {
+      text = msg.message.videoMessage.caption;
+    }
+    
+    if (!text) return false;
+    
+    // Check for URLs in the text
+    let hasLink = false;
+    for (const pattern of URL_PATTERNS) {
+      if (pattern.test(text)) {
+        hasLink = true;
+        break;
+      }
+    }
+    
+    if (!hasLink) return false;
+    
+    const senderJid = msg.key.participant || msg.key.remoteJid;
+    const senderNumber = senderJid.split('@')[0];
+    
+    // Delete the message with link
+    try {
+      await socket.sendMessage(sender, {
+        delete: {
+          id: msg.key.id,
+          remoteJid: sender,
+          fromMe: false
+        }
+      });
+      console.log(`Deleted link message from ${senderNumber}`);
+    } catch (deleteError) {
+      console.log('Could not delete message:', deleteError.message);
+    }
+    
+    // Send warning message
+    const warningMessage = `⚠️ *LINK DETECTED* ⚠️\n\n@${senderNumber} **Umetuma link kwenye group!**\n\nLinks haziruhusiwa hapa. Tafadhali usitumie tena.`;
+    
+    await socket.sendMessage(sender, { 
+      text: warningMessage,
+      mentions: [senderJid]
+    }, { quoted: fakevCard });
+    
+    return true;
+  } catch (error) {
+    console.error('Anti-link error:', error);
+    return false;
+  }
+}
+
 // Load Plugins
 function loadPlugins() {
   const plugins = {};
   try {
     if (!fs.existsSync(PLUGINS_PATH)) {
-      return plugins; // Return empty if plugins folder doesn't exist
+      return plugins;
     }
     
     const pluginFiles = fs.readdirSync(PLUGINS_PATH).filter(file => file.endsWith('.js'));
@@ -496,7 +573,7 @@ function loadPlugins() {
       }
     }
   } catch (error) {
-    // Silent error - continue without plugins
+    // Silent error
   }
   
   return plugins;
@@ -533,7 +610,7 @@ function silaMessage(text) {
   };
 }
 
-// Group event handler - AUTOMATIC VERSION
+// Group event handler
 const groupEvents = {
   handleGroupUpdate: async (socket, update) => {
     try {
@@ -561,11 +638,11 @@ const groupEvents = {
         } else if (action === 'promote') {
           const author = update.author || '';
           if (author) mentions.push(author);
-          message = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬆️ @${userName}\n│ 👑 Promoted!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+          message = `╭━━【 𝐏𝐑𝐎𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬆️ @${userName}\n│ 👑 Promoted to Admin!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
         } else if (action === 'demote') {
           const author = update.author || '';
           if (author) mentions.push(author);
-          message = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬇️ @${userName}\n│ 👑 Demoted!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
+          message = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬇️ @${userName}\n│ 👑 Demoted from Admin!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
         }
         
         if (message) {
@@ -606,6 +683,12 @@ async function kavixmdminibotmessagehandler(socket, number) {
     const owners = [];
     const msgContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || msg.message?.videoMessage?.caption || "";
     const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+
+    // Check anti-link first (AUTOMATIC)
+    if (isGroup && setting.antilink) {
+      const linkHandled = await handleAntiLink(socket, msg, setting, remoteJid);
+      if (linkHandled) return;
+    }
 
     // Handle auto-replies for inbox messages
     if (!isGroup && !isOwner && setting.worktype === 'inbox') {
@@ -694,7 +777,9 @@ async function kavixmdminibotmessagehandler(socket, number) {
             '6.1': ['autoread', true],
             '6.2': ['autoread', false],
             '7.1': ['autoswlike', true],
-            '7.2': ['autoswlike', false]
+            '7.2': ['autoswlike', false],
+            '8.1': ['antilink', true],
+            '8.2': ['antilink', false]
           };
 
           const [key, value] = settingsMap[text] || [];
@@ -860,31 +945,31 @@ async function kavixmdminibotmessagehandler(socket, number) {
               return await replygckavi("*𝙳𝙾 𝚈𝙾𝚄 𝚆𝙰𝙽𝚃 𝚃𝙾 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳 𝙰𝙽𝚈 𝙰𝚄𝙳𝙸𝙾 🥺*\n*𝚃𝙷𝙴𝙽 𝚆𝚁𝙸𝚃𝙴 𝙻𝙸𝙺𝙴 𝚃𝙷𝙸𝚂 ☺️*\n\n*.𝙿𝙻𝙰𝚈 ❮𝚈𝙾𝚄𝚁 𝙰𝚄𝙳𝙸𝙾 𝙽𝙰𝙼𝙴❯*\n\n*𝚆𝚁𝙸𝚃𝙴 𝙲𝙾𝙼𝙼𝙰𝙽𝙳 ❮𝙿𝙻𝙰𝚉❯ 𝙰𝙽𝙳 𝚃𝙷𝙴𝙽 𝚈𝙾𝚄𝚁 𝙰𝚄𝙳𝙸𝙾 𝙽𝙰𝙼𝙴 ☺️ 𝚃𝙷𝙴𝙽 𝚃𝙷𝙰𝚃 𝙰𝚄𝙳𝙸𝙾 𝚆𝙸𝙻𝙻 𝙱𝙴 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝙳 𝙰𝙽𝙳 𝚂𝙴𝙽𝚃 𝙷𝙴𝚁𝙴 🥰💞*");
             }
 
-            // Try different APIs
-            let apiUrl = `https://api.nekolabs.my.id/downloader/youtube/play/v1?q=${encodeURIComponent(q)}`;
+            // Try David Cyril Tech API
             try {
-              const res = await axios.get(apiUrl);
+              const search = await yts(q);
+              if (!search.videos.length) {
+                return await replygckavi("🚫 No results found.");
+              }
+              
+              const videoUrl = search.videos[0].url;
+              const finalApiUrl = `https://api.davidcyriltech.my.id/download/ytmp3?url=${encodeURIComponent(videoUrl)}`;
+              
+              const res = await axios.get(finalApiUrl);
               const data = res.data;
 
-              if (data?.success && data?.result?.downloadUrl) {
-                const meta = data.result.metadata;
-                const dlUrl = data.result.downloadUrl;
+              if (data?.url) {
+                const caption = `*🐢 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 🐢*\n*🐢 𝙽𝙰𝙼𝙴 :❯ ${search.videos[0].title}*\n*🐢 𝙰𝚁𝚃𝙸𝚂𝚃 :❯ ${search.videos[0].author.name}*\n*🐢 𝚃𝙸𝙼𝙴 :❯ ${search.videos[0].timestamp}*\n*🐢 𝚅𝙸𝙴𝚆𝚂 :❯ ${search.videos[0].views}*\n*𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`;
                 
-                const caption = `*🐢 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 🐢*\n*🐢 𝙽𝙰𝙼𝙴 :❯ ${meta.title}*\n*🐢 𝙲𝙷𝙰𝙽𝙽𝙴𝙻 :❯ ${meta.channel}*\n*🐢 𝚃𝙸𝙼𝙴 :❯ ${meta.duration}*\n*𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`;
-                
-                // Try to get thumbnail
-                try {
-                  const thumbRes = await axios.get(meta.cover, { responseType: 'arraybuffer' });
-                  const buffer = Buffer.from(thumbRes.data, 'binary');
-                  await socket.sendMessage(sender, { image: buffer, caption }, { quoted: fakevCard });
-                } catch {
-                  await socket.sendMessage(sender, { text: caption }, { quoted: fakevCard });
-                }
+                await socket.sendMessage(sender, { 
+                  image: { url: search.videos[0].thumbnail }, 
+                  caption: caption
+                }, { quoted: fakevCard });
                 
                 await socket.sendMessage(sender, {
-                  audio: { url: dlUrl },
+                  audio: { url: data.url },
                   mimetype: "audio/mpeg",
-                  fileName: `${meta.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
+                  fileName: `${search.videos[0].title.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
                 }, { quoted: fakevCard });
                 return;
               }
@@ -897,20 +982,42 @@ async function kavixmdminibotmessagehandler(socket, number) {
             }
             const ytUrl = search.videos[0].url;
             
-            const api = `https://sadiya-tech-apis.vercel.app/download/ytdl?url=${encodeURIComponent(ytUrl)}&format=mp3&apikey=sadiya`;
+            // Try different API
+            const api = `https://api.davidcyriltech.my.id/download/ytmp3?url=${encodeURIComponent(ytUrl)}`;
             const { data: apiRes } = await axios.get(api);
 
-            if (!apiRes?.status || !apiRes.result?.download) {
+            if (!apiRes?.url) {
               return await replygckavi("🚫 Something went wrong.");
             }
 
-            const result = apiRes.result;
-            const caption = `*ℹ️ Title :* \`${result.title}\`\n*⏱️ Duration :* \`${result.duration}\`\n*🧬 Views :* \`${result.views}\`\n📅 *Released Date :* \`${result.publish}\``;
+            const result = search.videos[0];
+            const caption = `*ℹ️ Title :* \`${result.title}\`\n*⏱️ Duration :* \`${result.timestamp}\`\n*🧬 Views :* \`${result.views}\`\n📅 *Released :* \`${result.ago}\``;
 
             await socket.sendMessage(sender, { image: { url: result.thumbnail }, caption: caption }, { quoted: fakevCard });
-            await socket.sendMessage(sender, { audio: { url: result.download }, mimetype: "audio/mpeg", ptt: false }, { quoted: fakevCard });
+            await socket.sendMessage(sender, { audio: { url: apiRes.url }, mimetype: "audio/mpeg", ptt: false }, { quoted: fakevCard });
           } catch (e) {
             await replygckavi("🚫 Something went wrong.");
+          }
+        }
+        break;
+
+        case 'antilink': {
+          if (!isGroup) return await groupMessage();
+          await kavireact("🔗");
+          try {
+            const state = args[0]?.toLowerCase();
+            if (state === 'on' || state === 'off') {
+              await updateSettings(number, { 
+                antilink: state === 'on' ? true : false 
+              });
+              
+              await replygckavi(`*🔗 Anti-link has been turned ${state.toUpperCase()}*\n\nWhen enabled, all links will be automatically deleted and the sender will be warned.`);
+            } else {
+              const current = setting.antilink ? "ON 🔴" : "OFF ⚪";
+              await replygckavi(`*🔗 Anti-link Status*\n\n*Current:* ${current}\n\n*Usage:* .antilink on/off\n\n*Features:*\n• Auto-deletes links\n• Warns the sender\n• Mentions the user`);
+            }
+          } catch (error) {
+            await replygckavi("Failed to update anti-link settings.");
           }
         }
         break;
@@ -1513,7 +1620,6 @@ async function kavixmdminibotmessagehandler(socket, number) {
         }
         break;
 
-        // Group commands
         case 'mute': {
           if (!isGroup) return await groupMessage();
           await kavireact("🔇");
@@ -1886,30 +1992,9 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isGroup) return await groupMessage();
           await kavireact("🧹");
           try {
-            // This would typically clear chat, but WhatsApp Web doesn't support clearing group chats
             await replygckavi("To clear chat, please use WhatsApp's built-in clear chat feature.\n\nFor individual chats, you can use WhatsApp's 'Clear chat' option.");
           } catch (error) {
             await replygckavi("Failed to clear chat.");
-          }
-        }
-        break;
-
-        case 'antilink': {
-          if (!isGroup) return await groupMessage();
-          await kavireact("🔗");
-          try {
-            const state = args[0]?.toLowerCase();
-            if (state === 'on' || state === 'off') {
-              await updateSettings(number, { 
-                antilink: state === 'on' ? true : false 
-              });
-              await replygckavi(`Anti-link has been turned ${state}.`);
-            } else {
-              const current = setting.antilink ? "on" : "off";
-              await replygckavi(`Anti-link is currently: ${current}\n\nUse: .antilink on/off`);
-            }
-          } catch (error) {
-            await replygckavi("Failed to update anti-link settings.");
           }
         }
         break;
@@ -1922,7 +2007,6 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const mentionedJid = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
             if (mentionedJid && mentionedJid[0]) {
               await socket.groupParticipantsUpdate(sender, [mentionedJid[0]], 'remove');
-              // Add to banned list (you would need to implement this in settings)
               await replygckavi(`User @${mentionedJid[0].split('@')[0]} has been banned from the group.`);
             } else {
               await replygckavi("Please mention the user to ban.\nExample: .ban @user");
@@ -1933,7 +2017,6 @@ async function kavixmdminibotmessagehandler(socket, number) {
         }
         break;
 
-        // Additional commands
         case 'alive': {
           await kavireact("☺️");
           await replygckavi(`*🐢 SILA MD MINI BOT 🐢*\n\n*Status:* 🟢 Online\n*Version:* 2.0.0\n*Owner:* +255612491554\n\n*Powered by SILA TECH*`);
@@ -2025,7 +2108,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                 text: `*📢 BROADCAST MESSAGE*\n\n${message}\n\n*From:* SILA MD Owner`
               });
               sentCount++;
-              await myDelay(1000); // Avoid rate limiting
+              await myDelay(1000);
             } catch (error) {
               console.log(`Failed to send to ${session.number}:`, error.message);
             }
@@ -2153,6 +2236,12 @@ async function kavixmdminibotmessagehandler(socket, number) {
 ├*〖 7 〗 ＡＵＴＯ Ｌ𝐼𝐾𝐸 𝑆𝑇𝐴𝑇𝑈𝑆* 💚👀
 ├━━ 7.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ ʟɪᴋᴇ sᴛᴀᴛᴜs ✅
 ├━━ 7.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏ ʟɪᴋᴇ sᴛᴀᴛᴜs ❌
+└━━━━━➢
+
+┌━━━━━➢
+├*〖 8 〗 ＡＮＴＩ－ＬＩＮＫ* 🔗🚫
+├━━ 8.1 ➣ ᴇɴᴀʙʟᴇ ᴀɴᴛɪ ʟɪɴᴋ ✅
+├━━ 8.2 ➣ ᴅɪsᴀʙʟᴇ ᴀɴᴛɪ ʟɪɴᴋ ❌
 └━━━━━➢`;
 
           await socket.sendMessage(sender, { image: { url: botImg }, caption: kavitext }, { quoted: fakevCard });
@@ -2358,7 +2447,7 @@ async function cyberkaviminibot(number, res) {
     await setupAutoBio(socket);
     await autoJoinChannels(socket);
     await setupChannelAutoReaction(socket);
-    setupGroupEventsListener(socket); // IMPORTANT: Setup group events listener
+    setupGroupEventsListener(socket);
     
     await kavixmdminibotmessagehandler(socket, sanitizedNumber);
     await kavixmdminibotstatushandler(socket, sanitizedNumber);
