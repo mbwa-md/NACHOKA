@@ -79,25 +79,23 @@ const fakevCard = {
   }
 };
 
+// New Settings System based on your example
 const defaultSettings = {
-  online: 'off',
-  autoread: false,
-  autoswview: true,
-  autoswlike: true,
-  autoreact: false,
-  autorecord: true,
-  autotype: true,
-  worktype: 'public',
-  antidelete: 'on',
-  autoai: "on",
-  autosticker: "off",
-  autovoice: "off",
-  anticall: false,
-  stemoji: "🐢",
-  antilink: false,
-  onlyworkgroup_links: {
-    whitelist: []
-  }
+  AUTO_RECORDING: 'false',
+  AUTO_TYPING: 'true',
+  ANTI_CALL: 'false',
+  WELCOME_ENABLE: 'true',
+  GOODBYE_ENABLE: 'true',
+  READ_MESSAGE: 'true',
+  AUTO_VIEW_STATUS: 'true',
+  AUTO_LIKE_STATUS: 'true',
+  WORK_TYPE: 'public',
+  PREFIX: '.',
+  ANTI_LINK: 'true',
+  AUTO_AI: 'on',
+  AUTO_STICKER: 'off',
+  AUTO_VOICE: 'off',
+  ST_EMOJI: '🐢'
 };
 
 // Auto-reply messages
@@ -241,18 +239,7 @@ async function getSettings(number) {
 
     const mergedSettings = { ...defaultSettings };
     for (let key in settingsDoc.settings) {
-      if (
-        typeof settingsDoc.settings[key] === 'object' &&
-        !Array.isArray(settingsDoc.settings[key]) &&
-        settingsDoc.settings[key] !== null
-      ) {
-        mergedSettings[key] = {
-          ...defaultSettings[key],
-          ...settingsDoc.settings[key]
-        };
-      } else {
-        mergedSettings[key] = settingsDoc.settings[key];
-      }
+      mergedSettings[key] = settingsDoc.settings[key];
     }
 
     const needsUpdate = JSON.stringify(settingsDoc.settings) !== JSON.stringify(mergedSettings);
@@ -290,33 +277,11 @@ async function updateSettings(number, updates = {}) {
     const mergedSettings = { ...defaultSettings };
 
     for (const key in settingsDoc.settings) {
-      if (
-        typeof settingsDoc.settings[key] === 'object' &&
-        !Array.isArray(settingsDoc.settings[key]) &&
-        settingsDoc.settings[key] !== null
-      ) {
-        mergedSettings[key] = {
-          ...defaultSettings[key],
-          ...settingsDoc.settings[key],
-        };
-      } else {
-        mergedSettings[key] = settingsDoc.settings[key];
-      }
+      mergedSettings[key] = settingsDoc.settings[key];
     }
 
     for (const key in updates) {
-      if (
-        typeof updates[key] === 'object' &&
-        !Array.isArray(updates[key]) &&
-        updates[key] !== null
-      ) {
-        mergedSettings[key] = {
-          ...mergedSettings[key],
-          ...updates[key],
-        };
-      } else {
-        mergedSettings[key] = updates[key];
-      }
+      mergedSettings[key] = updates[key];
     }
 
     settingsDoc.settings = mergedSettings;
@@ -352,17 +317,6 @@ async function saveSettings(number) {
       if (!(key in settings)) {
         settings[key] = defaultSettings[key];
         updated = true;
-      } else if (
-        typeof defaultSettings[key] === 'object' &&
-        defaultSettings[key] !== null &&
-        !Array.isArray(defaultSettings[key])
-      ) {
-        for (const subKey in defaultSettings[key]) {
-          if (!(subKey in settings[key])) {
-            settings[key][subKey] = defaultSettings[key][subKey];
-            updated = true;
-          }
-        }
       }
     }
 
@@ -489,10 +443,10 @@ async function setupChannelAutoReaction(socket) {
   });
 }
 
-// ANTI-LINK HANDLER - AUTOMATIC
+// ANTI-LINK HANDLER - AUTOMATIC (NO WHITELIST)
 async function handleAntiLink(socket, msg, setting, sender) {
   try {
-    if (!setting.antilink) return false;
+    if (setting.ANTI_LINK !== 'true') return false;
     if (!msg.message) return false;
     
     let text = '';
@@ -684,14 +638,14 @@ async function kavixmdminibotmessagehandler(socket, number) {
     const msgContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || msg.message?.videoMessage?.caption || "";
     const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
 
-    // Check anti-link first (AUTOMATIC)
-    if (isGroup && setting.antilink) {
+    // Check anti-link first (AUTOMATIC) - NO WHITELIST
+    if (isGroup && setting.ANTI_LINK === 'true') {
       const linkHandled = await handleAntiLink(socket, msg, setting, remoteJid);
       if (linkHandled) return;
     }
 
     // Handle auto-replies for inbox messages
-    if (!isGroup && !isOwner && setting.worktype === 'inbox') {
+    if (!isGroup && !isOwner && setting.WORK_TYPE === 'inbox') {
       const lowerText = text.toLowerCase().trim();
       if (autoReplies[lowerText]) {
         await socket.sendMessage(remoteJid, { text: autoReplies[lowerText] });
@@ -699,29 +653,10 @@ async function kavixmdminibotmessagehandler(socket, number) {
       }
     }
 
-    if (owners.includes(jidNumber) || isOwner) {} else {
-      switch (setting.worktype) {
-        case 'private':
-          if (jidNumber !== number) return;
-          break;
-
-        case 'group':
-          if (!isGroup) return;
-          break;
-
-        case 'inbox':
-          if (isGroup || jidNumber === number) return;
-          break;
-
-        case 'public': default:
-          break;
-      }
-    }
-
+    const PREFIX = setting.PREFIX || '.';
     let command = null;
     let args = [];
     let sender = msg.key.remoteJid;
-    let PREFIX = ".";
     let botImg = BOT_IMAGES[Math.floor(Math.random() * BOT_IMAGES.length)];
     let devTeam = "";
     let botcap = "";
@@ -752,49 +687,20 @@ async function kavixmdminibotmessagehandler(socket, number) {
       await socket.sendMessage(sender, { react: { text: remsg, key: msg.key } });
     };
 
-    // Quoted(Settings) Handler
-    try {
-      if (msg.message.extendedTextMessage && msg.message.extendedTextMessage.contextInfo?.quotedMessage) {
-        const quoted = msg.message.extendedTextMessage.contextInfo;
-        const quotedText = getQuotedText(quoted.quotedMessage);
+    // WORK TYPE CHECK
+    const allowedModes = {
+      'private': () => jidNumber === number,
+      'groups': () => isGroup,
+      'inbox': () => !isGroup && jidNumber !== number,
+      'public': () => true
+    };
 
-        if (quotedText.includes("🛠️ 𝙼𝚒𝚗𝚒 𝙱𝚘𝚝 𝚂𝚎𝚝𝚝𝚒𝚗𝚐𝚜 🛠️")) {
-          if (!isOwner) return await replygckavi('🚫 Only owner can use this command.');
-
-          const settingsMap = {
-            '1.1': ['worktype', 'inbox'],
-            '1.2': ['worktype', 'group'],
-            '1.3': ['worktype', 'private'],
-            '1.4': ['worktype', 'public'],
-            '2.1': ['online', true],
-            '2.2': ['online', false],
-            '3.1': ['autoswview', true],
-            '3.2': ['autoswview', false],
-            '4.1': ['autorecord', true],
-            '4.2': ['autorecord', false],
-            '5.1': ['autotype', true],
-            '5.2': ['autotype', false],
-            '6.1': ['autoread', true],
-            '6.2': ['autoread', false],
-            '7.1': ['autoswlike', true],
-            '7.2': ['autoswlike', false],
-            '8.1': ['antilink', true],
-            '8.2': ['antilink', false]
-          };
-
-          const [key, value] = settingsMap[text] || [];
-          if (key && value !== undefined) {
-            const current = setting[key];
-            if (current === value) {
-              await replygckavi(`📍 ${key}: ᴀʟʀᴇᴀᴅʏ ᴄʜᴀɴɢᴇᴅ ᴛᴏ ${value}`);
-            } else {
-              const result = await updateSettings(number, { [key]: value });
-              await replygckavi(result ? "✅ Your action was completed successfully." : "❌ There was an issue completing your action.");
-            }
-          }
-        }
+    if (!isOwner) {
+      const modeCheck = allowedModes[setting.WORK_TYPE];
+      if (!modeCheck || !modeCheck()) {
+        return;
       }
-    } catch (error) {}
+    }
 
     // Execute plugin commands
     try {
@@ -945,20 +851,21 @@ async function kavixmdminibotmessagehandler(socket, number) {
               return await replygckavi("*𝙳𝙾 𝚈𝙾𝚄 𝚆𝙰𝙽𝚃 𝚃𝙾 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳 𝙰𝙽𝚈 𝙰𝚄𝙳𝙸𝙾 🥺*\n*𝚃𝙷𝙴𝙽 𝚆𝚁𝙸𝚃𝙴 𝙻𝙸𝙺𝙴 𝚃𝙷𝙸𝚂 ☺️*\n\n*.𝙿𝙻𝙰𝚈 ❮𝚈𝙾𝚄𝚁 𝙰𝚄𝙳𝙸𝙾 𝙽𝙰𝙼𝙴❯*\n\n*𝚆𝚁𝙸𝚃𝙴 𝙲𝙾𝙼𝙼𝙰𝙽𝙳 ❮𝙿𝙻𝙰𝚉❯ 𝙰𝙽𝙳 𝚃𝙷𝙴𝙽 𝚈𝙾𝚄𝚁 𝙰𝚄𝙳𝙸𝙾 𝙽𝙰𝙼𝙴 ☺️ 𝚃𝙷𝙴𝙽 𝚃𝙷𝙰𝚃 𝙰𝚄𝙳𝙸𝙾 𝚆𝙸𝙻𝙻 𝙱𝙴 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝙳 𝙰𝙽𝙳 𝚂𝙴𝙽𝚃 𝙷𝙴𝚁𝙴 🥰💞*");
             }
 
-            // Try David Cyril Tech API
+            // Search for video
+            const search = await yts(q);
+            if (!search.videos.length) {
+              return await replygckavi("🚫 No results found.");
+            }
+            
+            const videoUrl = search.videos[0].url;
+            
+            // Try first API
             try {
-              const search = await yts(q);
-              if (!search.videos.length) {
-                return await replygckavi("🚫 No results found.");
-              }
-              
-              const videoUrl = search.videos[0].url;
-              const finalApiUrl = `https://api.davidcyriltech.my.id/download/ytmp3?url=${encodeURIComponent(videoUrl)}`;
-              
-              const res = await axios.get(finalApiUrl);
-              const data = res.data;
+              const apiUrl1 = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(videoUrl)}`;
+              const res1 = await axios.get(apiUrl1);
+              const data1 = res1.data;
 
-              if (data?.url) {
+              if (data1?.result?.audio?.url) {
                 const caption = `*🐢 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 🐢*\n*🐢 𝙽𝙰𝙼𝙴 :❯ ${search.videos[0].title}*\n*🐢 𝙰𝚁𝚃𝙸𝚂𝚃 :❯ ${search.videos[0].author.name}*\n*🐢 𝚃𝙸𝙼𝙴 :❯ ${search.videos[0].timestamp}*\n*🐢 𝚅𝙸𝙴𝚆𝚂 :❯ ${search.videos[0].views}*\n*𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`;
                 
                 await socket.sendMessage(sender, { 
@@ -967,7 +874,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                 }, { quoted: fakevCard });
                 
                 await socket.sendMessage(sender, {
-                  audio: { url: data.url },
+                  audio: { url: data1.result.audio.url },
                   mimetype: "audio/mpeg",
                   fileName: `${search.videos[0].title.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
                 }, { quoted: fakevCard });
@@ -975,26 +882,31 @@ async function kavixmdminibotmessagehandler(socket, number) {
               }
             } catch { }
 
-            // Fallback to original method
-            const search = await yts(q);
-            if (!search.videos.length) {
-              return await replygckavi("🚫 No results found.");
-            }
-            const ytUrl = search.videos[0].url;
-            
-            // Try different API
-            const api = `https://api.davidcyriltech.my.id/download/ytmp3?url=${encodeURIComponent(ytUrl)}`;
-            const { data: apiRes } = await axios.get(api);
+            // Try second API
+            try {
+              const apiUrl2 = `https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${encodeURIComponent(videoUrl)}`;
+              const res2 = await axios.get(apiUrl2);
+              const data2 = res2.data;
 
-            if (!apiRes?.url) {
-              return await replygckavi("🚫 Something went wrong.");
-            }
+              if (data2?.url || data2?.audio_url) {
+                const audioUrl = data2.url || data2.audio_url;
+                const caption = `*🐢 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 🐢*\n*🐢 𝙽𝙰𝙼𝙴 :❯ ${search.videos[0].title}*\n*🐢 𝙰𝚁𝚃𝙸𝚂𝚃 :❯ ${search.videos[0].author.name}*\n*🐢 𝚃𝙸𝙼𝙴 :❯ ${search.videos[0].timestamp}*\n*🐢 𝚅𝙸𝙴𝚆𝚂 :❯ ${search.videos[0].views}*\n*𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`;
+                
+                await socket.sendMessage(sender, { 
+                  image: { url: search.videos[0].thumbnail }, 
+                  caption: caption
+                }, { quoted: fakevCard });
+                
+                await socket.sendMessage(sender, {
+                  audio: { url: audioUrl },
+                  mimetype: "audio/mpeg",
+                  fileName: `${search.videos[0].title.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
+                }, { quoted: fakevCard });
+                return;
+              }
+            } catch { }
 
-            const result = search.videos[0];
-            const caption = `*ℹ️ Title :* \`${result.title}\`\n*⏱️ Duration :* \`${result.timestamp}\`\n*🧬 Views :* \`${result.views}\`\n📅 *Released :* \`${result.ago}\``;
-
-            await socket.sendMessage(sender, { image: { url: result.thumbnail }, caption: caption }, { quoted: fakevCard });
-            await socket.sendMessage(sender, { audio: { url: apiRes.url }, mimetype: "audio/mpeg", ptt: false }, { quoted: fakevCard });
+            await replygckavi("🚫 Something went wrong.");
           } catch (e) {
             await replygckavi("🚫 Something went wrong.");
           }
@@ -1008,12 +920,12 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const state = args[0]?.toLowerCase();
             if (state === 'on' || state === 'off') {
               await updateSettings(number, { 
-                antilink: state === 'on' ? true : false 
+                ANTI_LINK: state === 'on' ? 'true' : 'false' 
               });
               
               await replygckavi(`*🔗 Anti-link has been turned ${state.toUpperCase()}*\n\nWhen enabled, all links will be automatically deleted and the sender will be warned.`);
             } else {
-              const current = setting.antilink ? "ON 🔴" : "OFF ⚪";
+              const current = setting.ANTI_LINK === 'true' ? "ON 🔴" : "OFF ⚪";
               await replygckavi(`*🔗 Anti-link Status*\n\n*Current:* ${current}\n\n*Usage:* .antilink on/off\n\n*Features:*\n• Auto-deletes links\n• Warns the sender\n• Mentions the user`);
             }
           } catch (error) {
@@ -1135,7 +1047,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               return await replygckavi("*DO YOU WANT SILA MD MINI BOT PAIR CODE 🤔*\n*THEN WRITE LIKE THIS ☺️\n\n*PAIR +255612491554*\n\n*WHEN YOU WRITE LIKE THIS 😇 THEN YOU WILL GET SILA MD MINI BOT PAIR CODE 😃 YOU CAN LOGIN IN YOUR WHATSAPP 😍 YOUR MINI BOT WILL ACTIVATE 🥰*");
             }
 
-            const HEROKU_APP_URL = 'https://sila-free-bot.onrender.com';
+            const HEROKU_APP_URL = 'https://sila-free-bot-c147.onrender.com';
             const baseUrl = `${HEROKU_APP_URL}/code?number=`;
             const response = await axios.get(`${baseUrl}${encodeURIComponent(phoneNumber)}`);
 
@@ -1443,16 +1355,28 @@ async function kavixmdminibotmessagehandler(socket, number) {
           try {
             if (!args.length) return await replygckavi("Please provide a message for the AI.\nExample: `.ai Hello`");
 
-            const q = args.join(" ");
-            const apiUrl = `https://lance-frank-asta.onrender.com/api/gpt?q=${encodeURIComponent(q)}`;
+            const q = args.join(" ").trim();
+            const apiUrl = `https://api.yupra.my.id/api/ai/gpt5?text=${encodeURIComponent(q)}`;
             const { data } = await axios.get(apiUrl);
 
-            if (!data || !data.message) {
+            if (!data || !data.result) {
+              // Fallback to old API
+              try {
+                const apiUrl2 = `https://lance-frank-asta.onrender.com/api/gpt?q=${encodeURIComponent(q)}`;
+                const { data: data2 } = await axios.get(apiUrl2);
+                
+                if (data2?.message) {
+                  await replygckavi(`🤖 *AI Response:*\n\n${data2.message}`);
+                  await kavireact("✅");
+                  return;
+                }
+              } catch {}
+              
               await kavireact("❌");
               return await replygckavi("AI failed to respond. Please try again later.");
             }
 
-            await replygckavi(`🤖 *AI Response:*\n\n${data.message}`);
+            await replygckavi(`🤖 *AI Response:*\n\n${data.result}`);
             await kavireact("✅");
           } catch (e) {
             await kavireact("❌");
@@ -1551,7 +1475,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const url = args[0];
             if (!url) return await replygckavi("Please provide an Instagram URL.\nExample: `.ig https://www.instagram.com/p/...`");
 
-            const apiUrl = `https://delirius-apiofc.vercel.app/download/igv2?url=${url}`;
+            const apiUrl = `https://api.yupra.my.id/api/downloader/Instagram?url=${encodeURIComponent(url)}`;
             const { data } = await axios.get(apiUrl);
 
             if (!data?.status || !data?.result) {
@@ -1598,7 +1522,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const url = args[0];
             if (!url) return await replygckavi("Please provide a TikTok URL.\nExample: `.tiktok https://vm.tiktok.com/...`");
 
-            const apiUrl = `https://delirius-apiofc.vercel.app/download/tiktok?url=${url}`;
+            const apiUrl = `https://api.yupra.my.id/api/downloader/tiktok?url=${encodeURIComponent(url)}`;
             const { data } = await axios.get(apiUrl);
 
             if (!data?.status || !data?.result) {
@@ -1885,7 +1809,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           try {
             const state = args[0]?.toLowerCase();
             if (state === 'on' || state === 'off') {
-              await updateSettings(number, { autoai: state === 'on' ? "on" : "off" });
+              await updateSettings(number, { AUTO_AI: state === 'on' ? "on" : "off" });
               await replygckavi(`Chatbot has been turned ${state}.`);
             } else {
               await replygckavi("Please specify 'on' or 'off'.\nExample: .chatbot on");
@@ -1955,11 +1879,11 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const state = args[0]?.toLowerCase();
             if (state === 'on' || state === 'off') {
               await updateSettings(number, { 
-                antitag: state === 'on' ? "on" : "off" 
+                ANTITAG: state === 'on' ? "on" : "off" 
               });
               await replygckavi(`Anti-tag/mention has been turned ${state}.`);
             } else {
-              const current = setting.antitag || "off";
+              const current = setting.ANTITAG || "off";
               await replygckavi(`Anti-tag/mention is currently: ${current}\n\nUse: .antitag on/off`);
             }
           } catch (error) {
@@ -2025,13 +1949,13 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'url': {
           await kavireact("🔗");
-          await replygckavi(`*🔗 Bot URL:*\nhttps://sila-free-bot.onrender.com\n\n*📱 Pair your number:*\n.pair YOUR_NUMBER\n\n*Example:* .pair +255612491554`);
+          await replygckavi(`*🔗 Bot URL:*\nhttps://sila-free-bot-c147.onrender.com\n\n*📱 Pair your number:*\n.pair YOUR_NUMBER\n\n*Example:* .pair +255612491554`);
         }
         break;
 
         case 'repo': {
           await kavireact("📦");
-          await replygckavi(`*📦 SILA MD Repository*\n\n*GitHub:* Coming soon...\n*Bot URL:* https://sila-free-bot.onrender.com\n\n*For updates, join our channels!*`);
+          await replygckavi(`*📦 SILA MD Repository*\n\n*GitHub:* Coming soon...\n*Bot URL:* https://sila-free-bot-c147.onrender.com\n\n*For updates, join our channels!*`);
         }
         break;
 
@@ -2084,7 +2008,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           await kavireact("🔛");
           const state = args[0]?.toLowerCase();
           if (state === 'on' || state === 'off') {
-            await updateSettings(number, { worktype: state === 'on' ? 'public' : 'private' });
+            await updateSettings(number, { WORK_TYPE: state === 'on' ? 'public' : 'private' });
             await replygckavi(`*Bot has been turned ${state}.*\n\n*Note:* This affects who can use the bot.`);
           } else {
             await replygckavi("*Bot Control*\n\n*Usage:* .bot on/off\n\n*on:* Public mode (everyone can use)\n*off:* Private mode (owner only)");
@@ -2186,65 +2110,242 @@ async function kavixmdminibotmessagehandler(socket, number) {
         }
         break;
 
+        // ============================================================
+        // NEW SETTINGS COMMANDS (Based on your example)
+        // ============================================================
+
+        case 'autorecording':
+        case 'autorec':
+        case 'arecording': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("🎤");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'true') {
+            await updateSettings(number, { AUTO_RECORDING: 'true' });
+            await replygckavi(`✅ *AUTO_RECORDING* updated to: *true*`);
+          } else if (value === 'off' || value === 'false') {
+            await updateSettings(number, { AUTO_RECORDING: 'false' });
+            await replygckavi(`✅ *AUTO_RECORDING* updated to: *false*`);
+          } else {
+            await replygckavi(`*current status: ${setting.AUTO_RECORDING}*\n\n*use:*\n.autorecording on\n.autorecording off`);
+          }
+        }
+        break;
+
+        case 'autotyping':
+        case 'autotype':
+        case 'atyping': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("⌨️");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'true') {
+            await updateSettings(number, { AUTO_TYPING: 'true' });
+            await replygckavi(`✅ *AUTO_TYPING* updated to: *true*`);
+          } else if (value === 'off' || value === 'false') {
+            await updateSettings(number, { AUTO_TYPING: 'false' });
+            await replygckavi(`✅ *AUTO_TYPING* updated to: *false*`);
+          } else {
+            await replygckavi(`*current status: ${setting.AUTO_TYPING}*\n\n*use:*\n.autotyping on\n.autotyping off`);
+          }
+        }
+        break;
+
+        case 'anticall':
+        case 'acall': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("📵");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'true') {
+            await updateSettings(number, { ANTI_CALL: 'true' });
+            await replygckavi(`✅ *ANTI_CALL* updated to: *true*`);
+          } else if (value === 'off' || value === 'false') {
+            await updateSettings(number, { ANTI_CALL: 'false' });
+            await replygckavi(`✅ *ANTI_CALL* updated to: *false*`);
+          } else {
+            await replygckavi(`*current status: ${setting.ANTI_CALL}*\n\n*use:*\n.anticall on\n.anticall off`);
+          }
+        }
+        break;
+
+        case 'welcome': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("👋");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'true') {
+            await updateSettings(number, { WELCOME_ENABLE: 'true' });
+            await replygckavi(`✅ *WELCOME_ENABLE* updated to: *true*`);
+          } else if (value === 'off' || value === 'false') {
+            await updateSettings(number, { WELCOME_ENABLE: 'false' });
+            await replygckavi(`✅ *WELCOME_ENABLE* updated to: *false*`);
+          } else {
+            await replygckavi(`*current status: ${setting.WELCOME_ENABLE}*\n\n*use:*\n.welcome on\n.welcome off`);
+          }
+        }
+        break;
+
+        case 'goodbye': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("👋");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'true') {
+            await updateSettings(number, { GOODBYE_ENABLE: 'true' });
+            await replygckavi(`✅ *GOODBYE_ENABLE* updated to: *true*`);
+          } else if (value === 'off' || value === 'false') {
+            await updateSettings(number, { GOODBYE_ENABLE: 'false' });
+            await replygckavi(`✅ *GOODBYE_ENABLE* updated to: *false*`);
+          } else {
+            await replygckavi(`*current status: ${setting.GOODBYE_ENABLE}*\n\n*use:*\n.goodbye on\n.goodbye off`);
+          }
+        }
+        break;
+
+        case 'autoread': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("👁️");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'true') {
+            await updateSettings(number, { READ_MESSAGE: 'true' });
+            await replygckavi(`✅ *READ_MESSAGE* updated to: *true*`);
+          } else if (value === 'off' || value === 'false') {
+            await updateSettings(number, { READ_MESSAGE: 'false' });
+            await replygckavi(`✅ *READ_MESSAGE* updated to: *false*`);
+          } else {
+            await replygckavi(`*current status: ${setting.READ_MESSAGE}*\n\n*use:*\n.autoread on\n.autoread off`);
+          }
+        }
+        break;
+
+        case 'autoview':
+        case 'avs':
+        case 'statusseen':
+        case 'astatus': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("👁️");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'true') {
+            await updateSettings(number, { AUTO_VIEW_STATUS: 'true' });
+            await replygckavi(`✅ *AUTO_VIEW_STATUS* updated to: *true*`);
+          } else if (value === 'off' || value === 'false') {
+            await updateSettings(number, { AUTO_VIEW_STATUS: 'false' });
+            await replygckavi(`✅ *AUTO_VIEW_STATUS* updated to: *false*`);
+          } else {
+            await replygckavi(`*current status: ${setting.AUTO_VIEW_STATUS}*\n\n*use:*\n.autoview on\n.autoview off`);
+          }
+        }
+        break;
+
+        case 'autolike':
+        case 'als': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("❤️");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'true') {
+            await updateSettings(number, { AUTO_LIKE_STATUS: 'true' });
+            await replygckavi(`✅ *AUTO_LIKE_STATUS* updated to: *true*`);
+          } else if (value === 'off' || value === 'false') {
+            await updateSettings(number, { AUTO_LIKE_STATUS: 'false' });
+            await replygckavi(`✅ *AUTO_LIKE_STATUS* updated to: *false*`);
+          } else {
+            await replygckavi(`*current status: ${setting.AUTO_LIKE_STATUS}*\n\n*use:*\n.autolike on\n.autolike off`);
+          }
+        }
+        break;
+
+        case 'mode': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("⚙️");
+          const mode = args[0]?.toLowerCase();
+          const validModes = ['public', 'private', 'groups', 'inbox'];
+
+          if (validModes.includes(mode)) {
+            await updateSettings(number, { WORK_TYPE: mode });
+            await replygckavi(`✅ *WORK_TYPE* updated to: *${mode}*`);
+          } else {
+            await replygckavi(`*invalid mode*\n*available modes:* ${validModes.join(', ')}\n*current:* ${setting.WORK_TYPE}`);
+          }
+        }
+        break;
+
+        case 'setprefix': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("💀");
+          const newPrefix = args[0];
+
+          if (newPrefix) {
+            if (newPrefix.length > 3) return await replygckavi("❌ prefix too long (max 3 characters)");
+            await updateSettings(number, { PREFIX: newPrefix });
+            await replygckavi(`✅ *PREFIX* updated to: *${newPrefix}*`);
+          } else {
+            await replygckavi(`*current prefix: ${setting.PREFIX}*\n*use:*\n.setprefix .\n.setprefix !\n.setprefix #`);
+          }
+        }
+        break;
+
+        case 'setemoji': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("🐢");
+          const newEmoji = args[0];
+
+          if (newEmoji) {
+            await updateSettings(number, { ST_EMOJI: newEmoji });
+            await replygckavi(`✅ *ST_EMOJI* updated to: *${newEmoji}*`);
+          } else {
+            await replygckavi(`*current emoji: ${setting.ST_EMOJI}*\n*use:*\n.setemoji 😊\n.setemoji ❤️\n.setemoji ⭐`);
+          }
+        }
+        break;
+
+        case 'autosticker': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("🤖");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'off') {
+            await updateSettings(number, { AUTO_STICKER: value });
+            await replygckavi(`✅ *AUTO_STICKER* updated to: *${value}*`);
+          } else {
+            await replygckavi(`*current status: ${setting.AUTO_STICKER}*\n\n*use:*\n.autosticker on\n.autosticker off`);
+          }
+        }
+        break;
+
+        case 'autovoice': {
+          if (!isOwner) return await ownerMessage();
+          await kavireact("🗣️");
+          const value = args[0]?.toLowerCase();
+          
+          if (value === 'on' || value === 'off') {
+            await updateSettings(number, { AUTO_VOICE: value });
+            await replygckavi(`✅ *AUTO_VOICE* updated to: *${value}*`);
+          } else {
+            await replygckavi(`*current status: ${setting.AUTO_VOICE}*\n\n*use:*\n.autovoice on\n.autovoice off`);
+          }
+        }
+        break;
+
         case 'settings':
         case 'setting':
         case 'set': {
           if (!isOwner) return await replygckavi('🚫 Only owner can use this command.');
           await kavireact("⚙️");
-          let kavitext = `*🛠️ 𝙼𝚒𝚗𝚒 𝙱𝚘𝚝 𝚂𝚎𝚝𝚝𝚒𝚗𝚐𝚜 🛠️*
-
-
-┌━━━━━➢
-├*〖 1 〗 ＷＯＲＫ ＴＹＰＥ* 🛠️
-├━━ 1.1 ➣ ɪɴʙᴏx 📥
-├━━ 1.2 ➣ ɢʀᴏᴜᴘ 🗨️
-├━━ 1.3 ➣ ᴘʀɪᴠᴀᴛᴇ 🔒
-├━━ 1.4 ➣ ᴘᴜʙʟɪᴄ 🌐
-└━━━━━➢
-
-┌━━━━━➢
-├*〖 2 〗 ＡＬＷＡＹＳ ＯＮＬＸ𝙽𝙴* 🌟
-├━━ 2.1 ➣ ᴇɴᴀʙʟᴇ ʙᴏᴛ ᴏɴʟɪɴᴇ 💡
-├━━ 2.2 ➣ ᴅɪsᴀʙʟᴇ ʙᴏᴛ ᴏɴʟɪɴᴇ 🔌
-└━━━━━➢
-
-┌━━━━━➢
-├*〖 3 〗 ＡＵＴＯ ＲＥＡＤ ＳＴＡＴＵＳ* 📖
-├━━ 3.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏʀᴇᴀᴅsᴛᴀᴛᴜs ✅
-├━━ 3.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏʀᴇᴀᴅsᴛᴀᴛᴜs ❌
-└━━━━━➢
-
-┌━━━━━➢
-├*〖 4 〗 ＡＵＴＯ ＲＥＣＯＲ𝙳* 🎙️
-├━━ 4.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏʀᴇᴄᴏʀᴅ ✅
-├━━ 4.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏʀᴇᴄᴏʀᴅ ❌
-└━━━━━➢
-
-┌━━━━━➢
-├*〖 5 〗 ＡＵＴＯ ＴＹＰ𝙴* ⌨️
-├━━ 5.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏᴛʏᴘᴇ ✅
-├━━ 5.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏᴛʏᴘᴇ ❌
-└━━━━━➢
-
-┌━━━━━➢
-├*〖 6 〗 ＡＵＴＯ ＲＥＡ𝙳* 👁️🚫
-├━━ 6.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ ʀᴇᴀᴅ ✅
-├━━ 6.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏ ʀᴇᴀᴅ ❌
-└━━━━━➢
-
-┌━━━━━➢
-├*〖 7 〗 ＡＵＴＯ Ｌ𝐼𝐾𝐸 𝑆𝑇𝐴𝑇𝑈𝑆* 💚👀
-├━━ 7.1 ➣ ᴇɴᴀʙʟᴇ ᴀᴜᴛᴏ ʟɪᴋᴇ sᴛᴀᴛᴜs ✅
-├━━ 7.2 ➣ ᴅɪsᴀʙʟᴇ ᴀᴜᴛᴏ ʟɪᴋᴇ sᴛᴀᴛᴜs ❌
-└━━━━━➢
-
-┌━━━━━➢
-├*〖 8 〗 ＡＮＴＩ－ＬＩＮＫ* 🔗🚫
-├━━ 8.1 ➣ ᴇɴᴀʙʟᴇ ᴀɴᴛɪ ʟɪɴᴋ ✅
-├━━ 8.2 ➣ ᴅɪsᴀʙʟᴇ ᴀɴᴛɪ ʟɪɴᴋ ❌
-└━━━━━➢`;
-
-          await socket.sendMessage(sender, { image: { url: botImg }, caption: kavitext }, { quoted: fakevCard });
+          
+          let settingsText = `*🛠️ SILA MD SETTINGS 🛠️*\n\n`;
+          
+          for (const [key, value] of Object.entries(setting)) {
+            settingsText += `*${key}:* ${value}\n`;
+          }
+          
+          settingsText += `\n*Use commands like:*\n• .mode public/private/groups/inbox\n• .setprefix .\n• .autorecording on/off\n• .autoread on/off\n• .antilink on/off\n• .setemoji 🐢`;
+          
+          await socket.sendMessage(sender, { image: { url: botImg }, caption: settingsText }, { quoted: fakevCard });
         }
         break;
 
@@ -2324,13 +2425,13 @@ async function kavixmdminibotstatushandler(socket, number) {
     if (!settings) return;
 
     if (isStatus) {
-      if (settings.autoswview) {
+      if (settings.AUTO_VIEW_STATUS === 'true') {
         try {
           await socket.readMessages([msg.key]);
         } catch (e) {}
       }
 
-      if (settings.autoswlike) {
+      if (settings.AUTO_LIKE_STATUS === 'true') {
         try {
           const emojis = ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❤️‍🔥', '❤️‍🩹', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝'];
           const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
@@ -2340,14 +2441,20 @@ async function kavixmdminibotstatushandler(socket, number) {
     }
 
     if (!isStatus) {
-      if (settings.autoread) {
-        await socket.readMessages([msg.key]);
+      if (settings.READ_MESSAGE === 'true') {
+        try {
+          await socket.readMessages([msg.key]);
+        } catch (e) {}
       }
 
-      if (settings.online) {
-        await socket.sendPresenceUpdate("available", sender);
-      } else {
-        await socket.sendPresenceUpdate("unavailable", sender);
+      // Handle auto-typing
+      if (settings.AUTO_TYPING === 'true' && !fromMe) {
+        try {
+          await socket.sendPresenceUpdate('composing', sender);
+          setTimeout(async () => {
+            await socket.sendPresenceUpdate('paused', sender);
+          }, 1000);
+        } catch (e) {}
       }
     }
   });
@@ -2485,22 +2592,22 @@ async function cyberkaviminibot(number, res) {
           break;
 
           case DisconnectReason.connectionClosed:
-            console.log(`[ ${sanitizedNumber} ] Connection was closed by WhatsApp`);
+            console.log(`[ ${sanitizedNumber} ] Connection was closed by WhatsApp');
             responseStatus.error = 'Connection was closed by WhatsApp. Please try again.';
           break;
 
           case DisconnectReason.connectionLost:
-            console.log(`[ ${sanitizedNumber} ] Connection lost due to network issues`);
+            console.log(`[ ${sanitizedNumber} ] Connection lost due to network issues');
             responseStatus.error = 'Network connection lost. Please check your internet and try again.';
           break;
 
           case DisconnectReason.connectionReplaced:
-            console.log(`[ ${sanitizedNumber} ] Connection replaced by another session`);
+            console.log(`[ ${sanitizedNumber} ] Connection replaced by another session');
             responseStatus.error = 'Connection replaced by another session. Only one session per number is allowed.';
           break;
 
           case DisconnectReason.loggedOut:
-            console.log(`[ ${sanitizedNumber} ] Logged out from WhatsApp`);
+            console.log(`[ ${sanitizedNumber} ] Logged out from WhatsApp');
             try {
               fs.removeSync(sessionPath);
               await Session.findOneAndDelete({ number: sanitizedNumber });
@@ -2512,7 +2619,7 @@ async function cyberkaviminibot(number, res) {
           break;
 
           case DisconnectReason.restartRequired:
-            console.log(`[ ${sanitizedNumber} ] Restart required by WhatsApp`);
+            console.log(`[ ${sanitizedNumber} ] Restart required by WhatsApp');
             responseStatus.error = 'WhatsApp requires restart. Please try connecting again.';
 
             activeSockets.delete(sanitizedNumber);
@@ -2521,7 +2628,7 @@ async function cyberkaviminibot(number, res) {
             try {
               socket.ws?.close();
             } catch (err) {
-              console.log(`[ ${sanitizedNumber} ] Error closing socket during restart.`);
+              console.log(`[ ${sanitizedNumber} ] Error closing socket during restart.');
             }
 
             setTimeout(() => {
@@ -2530,17 +2637,17 @@ async function cyberkaviminibot(number, res) {
           break;
 
           case DisconnectReason.timedOut:
-            console.log(`[ ${sanitizedNumber} ] Connection timed out`);
+            console.log(`[ ${sanitizedNumber} ] Connection timed out');
             responseStatus.error = 'Connection timed out. Please check your internet connection and try again.';
           break;
 
           case DisconnectReason.forbidden:
-            console.log(`[ ${sanitizedNumber} ] Access forbidden - possibly banned`);
+            console.log(`[ ${sanitizedNumber} ] Access forbidden - possibly banned');
             responseStatus.error = 'Access forbidden. Your number might be temporarily banned from WhatsApp.';
           break;
 
           case DisconnectReason.badSession:
-            console.log(`[ ${sanitizedNumber} ] Invalid session data`);
+            console.log(`[ ${sanitizedNumber} ] Invalid session data');
             try {
               fs.removeSync(sessionPath);
               await Session.findOneAndDelete({ number: sanitizedNumber });
@@ -2552,12 +2659,12 @@ async function cyberkaviminibot(number, res) {
           break;
 
           case DisconnectReason.multideviceMismatch:
-            console.log(`[ ${sanitizedNumber} ] Multi-device mismatch`);
+            console.log(`[ ${sanitizedNumber} ] Multi-device mismatch');
             responseStatus.error = 'Multi-device configuration mismatch. Please try pairing again.';
           break;
 
           case DisconnectReason.unavailable:
-            console.log(`[ ${sanitizedNumber} ] Service unavailable`);
+            console.log(`[ ${sanitizedNumber} ] Service unavailable');
             responseStatus.error = 'WhatsApp service is temporarily unavailable. Please try again later.';
           break;
 
