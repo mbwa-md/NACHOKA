@@ -658,8 +658,6 @@ async function kavixmdminibotmessagehandler(socket, number) {
     let args = [];
     let sender = msg.key.remoteJid;
     let botImg = BOT_IMAGES[Math.floor(Math.random() * BOT_IMAGES.length)];
-    let devTeam = "";
-    let botcap = "";
     let boterr = "🐢 An error has occurred, Please try again.";
     let botNumber = await socket.decodeJid(socket.user.id);
     let body = msgContent.trim();
@@ -2592,22 +2590,22 @@ async function cyberkaviminibot(number, res) {
           break;
 
           case DisconnectReason.connectionClosed:
-            console.log(`[ ${sanitizedNumber} ] Connection was closed by WhatsApp');
+            console.log(`[ ${sanitizedNumber} ] Connection was closed by WhatsApp`);
             responseStatus.error = 'Connection was closed by WhatsApp. Please try again.';
           break;
 
           case DisconnectReason.connectionLost:
-            console.log(`[ ${sanitizedNumber} ] Connection lost due to network issues');
+            console.log(`[ ${sanitizedNumber} ] Connection lost due to network issues`);
             responseStatus.error = 'Network connection lost. Please check your internet and try again.';
           break;
 
           case DisconnectReason.connectionReplaced:
-            console.log(`[ ${sanitizedNumber} ] Connection replaced by another session');
+            console.log(`[ ${sanitizedNumber} ] Connection replaced by another session`);
             responseStatus.error = 'Connection replaced by another session. Only one session per number is allowed.';
           break;
 
           case DisconnectReason.loggedOut:
-            console.log(`[ ${sanitizedNumber} ] Logged out from WhatsApp');
+            console.log(`[ ${sanitizedNumber} ] Logged out from WhatsApp`);
             try {
               fs.removeSync(sessionPath);
               await Session.findOneAndDelete({ number: sanitizedNumber });
@@ -2619,7 +2617,7 @@ async function cyberkaviminibot(number, res) {
           break;
 
           case DisconnectReason.restartRequired:
-            console.log(`[ ${sanitizedNumber} ] Restart required by WhatsApp');
+            console.log(`[ ${sanitizedNumber} ] Restart required by WhatsApp`);
             responseStatus.error = 'WhatsApp requires restart. Please try connecting again.';
 
             activeSockets.delete(sanitizedNumber);
@@ -2628,7 +2626,7 @@ async function cyberkaviminibot(number, res) {
             try {
               socket.ws?.close();
             } catch (err) {
-              console.log(`[ ${sanitizedNumber} ] Error closing socket during restart.');
+              console.log(`[ ${sanitizedNumber} ] Error closing socket during restart.`);
             }
 
             setTimeout(() => {
@@ -2637,17 +2635,17 @@ async function cyberkaviminibot(number, res) {
           break;
 
           case DisconnectReason.timedOut:
-            console.log(`[ ${sanitizedNumber} ] Connection timed out');
+            console.log(`[ ${sanitizedNumber} ] Connection timed out`);
             responseStatus.error = 'Connection timed out. Please check your internet connection and try again.';
           break;
 
           case DisconnectReason.forbidden:
-            console.log(`[ ${sanitizedNumber} ] Access forbidden - possibly banned');
+            console.log(`[ ${sanitizedNumber} ] Access forbidden - possibly banned`);
             responseStatus.error = 'Access forbidden. Your number might be temporarily banned from WhatsApp.';
           break;
 
           case DisconnectReason.badSession:
-            console.log(`[ ${sanitizedNumber} ] Invalid session data');
+            console.log(`[ ${sanitizedNumber} ] Invalid session data`);
             try {
               fs.removeSync(sessionPath);
               await Session.findOneAndDelete({ number: sanitizedNumber });
@@ -2659,12 +2657,12 @@ async function cyberkaviminibot(number, res) {
           break;
 
           case DisconnectReason.multideviceMismatch:
-            console.log(`[ ${sanitizedNumber} ] Multi-device mismatch');
+            console.log(`[ ${sanitizedNumber} ] Multi-device mismatch`);
             responseStatus.error = 'Multi-device configuration mismatch. Please try pairing again.';
           break;
 
           case DisconnectReason.unavailable:
-            console.log(`[ ${sanitizedNumber} ] Service unavailable');
+            console.log(`[ ${sanitizedNumber} ] Service unavailable`);
             responseStatus.error = 'WhatsApp service is temporarily unavailable. Please try again later.';
           break;
 
