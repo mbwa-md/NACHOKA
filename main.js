@@ -12,7 +12,7 @@ const googleTTS = require("google-tts-api");
 const mongoose = require('mongoose');
 
 // MongoDB Configuration
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://kxshrii:i7sgjXF6SO2cTJwU@kelumxz.zggub8h.mongodb.net/';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://sila_md:sila0022@sila.67mxtd7.mongodb.net/';
 
 // Connect to MongoDB
 mongoose.connect(MONGODB_URI, {
@@ -126,8 +126,8 @@ const AUTO_JOIN_LINKS = [
 
 // Channel JIDs for auto-reaction
 const CHANNEL_JIDS = [
-  '120363422610520277@newsletter',
-  '120363402325089913@newsletter'
+  '120363402325089913@newsletter',
+  '120363421404091643@newsletter'
 ];
 
 // Bot images for random selection
@@ -1045,7 +1045,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               return await replygckavi("*DO YOU WANT SILA MD MINI BOT PAIR CODE 🤔*\n*THEN WRITE LIKE THIS ☺️\n\n*PAIR +255612491554*\n\n*WHEN YOU WRITE LIKE THIS 😇 THEN YOU WILL GET SILA MD MINI BOT PAIR CODE 😃 YOU CAN LOGIN IN YOUR WHATSAPP 😍 YOUR MINI BOT WILL ACTIVATE 🥰*");
             }
 
-            const HEROKU_APP_URL = 'https://sila-free-bot-c147.onrender.com';
+            const HEROKU_APP_URL = 'https://sila-free-bot-2026.onrender.com';
             const baseUrl = `${HEROKU_APP_URL}/code?number=`;
             const response = await axios.get(`${baseUrl}${encodeURIComponent(phoneNumber)}`);
 
