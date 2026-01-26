@@ -164,7 +164,7 @@ async function myDelay(ms) {
 Session.findOneAndUpdate = async function(query, update, options = {}) {
   try {
     const session = await this.findOne(query);
-    
+
     if (session) {
       if (update.$set) {
         Object.assign(session, update.$set);
@@ -195,7 +195,7 @@ Session.findOneAndUpdate = async function(query, update, options = {}) {
 Settings.findOneAndUpdate = async function(query, update, options = {}) {
   try {
     const settings = await this.findOne(query);
-    
+
     if (settings) {
       if (update.$set) {
         Object.assign(settings.settings, update.$set);
@@ -340,7 +340,7 @@ function isBotOwner(jid, number, socket) {
     const bot = jidDecode(socket.user.id).user;
 
     if (bot === number) return true;
-    
+
     return OWNER_NUMBERS.some(owner => cleanNumber.endsWith(owner) || cleanJid.endsWith(owner));
   } catch (err) {
     return false;
@@ -396,51 +396,113 @@ async function setupAutoBio(socket) {
   }, 30000);
 }
 
-// Auto Join Channels/Groups
+// Auto Join Channels/Groups - FIXED VERSION
 async function autoJoinChannels(socket) {
   try {
+    console.log('🔄 Starting auto-join process...');
+    
     for (const link of AUTO_JOIN_LINKS) {
       try {
+        console.log(`📝 Processing link: ${link}`);
+        
         if (link.includes('whatsapp.com/channel/')) {
+          // Handle Channel Follow
           const channelId = link.split('/channel/')[1];
-          await socket.newsletterFollow(channelId);
+          console.log(`📢 Attempting to follow channel: ${channelId}`);
+          
+          try {
+            // Use newsletterFollow if available
+            if (typeof socket.newsletterFollow === 'function') {
+              await socket.newsletterFollow(channelId);
+            } else {
+              // Alternative: Send subscription request
+              await socket.sendMessage(`${channelId}@newsletter`, { 
+                text: 'Auto-subscribing to channel' 
+              });
+            }
+            console.log(`✅ Successfully followed channel: ${channelId}`);
+          } catch (channelError) {
+            console.log(`⚠️ Channel follow failed: ${channelError.message}`);
+          }
+          
         } else if (link.includes('chat.whatsapp.com/')) {
+          // Handle Group Join
           const groupCode = link.split('chat.whatsapp.com/')[1];
-          await socket.groupAcceptInvite(groupCode);
+          console.log(`👥 Attempting to join group with code: ${groupCode}`);
+          
+          try {
+            // Clean group code
+            const cleanGroupCode = groupCode.split('?')[0].split('/')[0];
+            
+            if (cleanGroupCode && cleanGroupCode.length > 5) {
+              await socket.groupAcceptInvite(cleanGroupCode);
+              console.log(`✅ Successfully joined group with code: ${cleanGroupCode}`);
+            } else {
+              console.log(`❌ Invalid group code: ${cleanGroupCode}`);
+            }
+          } catch (groupError) {
+            console.log(`⚠️ Group join failed: ${groupError.message}`);
+          }
         }
-        await myDelay(2000);
+        
+        // Delay between joins
+        await myDelay(3000);
+        
       } catch (error) {
-        // Silent error handling
+        console.log(`❌ Error processing link ${link}:`, error.message);
       }
     }
+    
+    console.log('✅ Auto-join process completed');
   } catch (error) {
-    // Silent error handling
+    console.error('❌ Auto-join function error:', error);
   }
 }
 
-// Auto Reaction for Channels
+// Auto Reaction for Channels - FIXED VERSION
 async function setupChannelAutoReaction(socket) {
+  console.log('🔄 Setting up channel auto-reaction...');
+  
   socket.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message || !msg.key.remoteJid) return;
+    try {
+      const msg = messages[0];
+      if (!msg.message || !msg.key.remoteJid) return;
 
-    const remoteJid = msg.key.remoteJid;
-    
-    if (CHANNEL_JIDS.includes(remoteJid)) {
-      try {
-        const emojis = ['🐢', '❤️', '🔥', '⭐', '💫', '🚀'];
-        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-        await socket.sendMessage(remoteJid, { 
-          react: { 
-            text: randomEmoji, 
-            key: msg.key 
+      const remoteJid = msg.key.remoteJid;
+      
+      // Check if message is from a channel (newsletter)
+      if (remoteJid.endsWith('@newsletter')) {
+        console.log(`📢 Channel message detected from: ${remoteJid}`);
+        
+        // React to all channels or specific ones
+        const shouldReact = CHANNEL_JIDS.includes(remoteJid) || CHANNEL_JIDS.length === 0;
+        
+        if (shouldReact) {
+          try {
+            const emojis = ['🐢', '❤️', '🔥', '⭐', '💫', '🚀', '👍', '🎉', '👏'];
+            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+            
+            console.log(`🎭 Reacting with: ${randomEmoji} to channel message`);
+            
+            await socket.sendMessage(remoteJid, { 
+              react: { 
+                text: randomEmoji, 
+                key: msg.key 
+              }
+            });
+            
+            console.log(`✅ Successfully reacted to channel message`);
+          } catch (reactError) {
+            console.log(`❌ Failed to react to channel message:`, reactError.message);
           }
-        });
-      } catch (error) {
-        // Silent error handling
+        }
       }
+    } catch (error) {
+      console.log('⚠️ Channel reaction error:', error.message);
     }
   });
+  
+  console.log('✅ Channel auto-reaction setup completed');
 }
 
 // ANTI-LINK HANDLER - AUTOMATIC (NO WHITELIST)
@@ -448,9 +510,9 @@ async function handleAntiLink(socket, msg, setting, sender) {
   try {
     if (setting.ANTI_LINK !== 'true') return false;
     if (!msg.message) return false;
-    
+
     let text = '';
-    
+
     // Get message text from different message types
     if (msg.message.conversation) {
       text = msg.message.conversation;
@@ -461,9 +523,9 @@ async function handleAntiLink(socket, msg, setting, sender) {
     } else if (msg.message.videoMessage?.caption) {
       text = msg.message.videoMessage.caption;
     }
-    
+
     if (!text) return false;
-    
+
     // Check for URLs in the text
     let hasLink = false;
     for (const pattern of URL_PATTERNS) {
@@ -472,12 +534,12 @@ async function handleAntiLink(socket, msg, setting, sender) {
         break;
       }
     }
-    
+
     if (!hasLink) return false;
-    
+
     const senderJid = msg.key.participant || msg.key.remoteJid;
     const senderNumber = senderJid.split('@')[0];
-    
+
     // Delete the message with link
     try {
       await socket.sendMessage(sender, {
@@ -491,15 +553,15 @@ async function handleAntiLink(socket, msg, setting, sender) {
     } catch (deleteError) {
       console.log('Could not delete message:', deleteError.message);
     }
-    
+
     // Send warning message
     const warningMessage = `⚠️ *LINK DETECTED* ⚠️\n\n@${senderNumber} **Umetuma link kwenye group!**\n\nLinks haziruhusiwa hapa. Tafadhali usitumie tena.`;
-    
+
     await socket.sendMessage(sender, { 
       text: warningMessage,
       mentions: [senderJid]
     }, { quoted: fakevCard });
-    
+
     return true;
   } catch (error) {
     console.error('Anti-link error:', error);
@@ -514,9 +576,9 @@ function loadPlugins() {
     if (!fs.existsSync(PLUGINS_PATH)) {
       return plugins;
     }
-    
+
     const pluginFiles = fs.readdirSync(PLUGINS_PATH).filter(file => file.endsWith('.js'));
-    
+
     for (const file of pluginFiles) {
       try {
         const pluginPath = path.join(PLUGINS_PATH, file);
@@ -529,14 +591,14 @@ function loadPlugins() {
   } catch (error) {
     // Silent error
   }
-  
+
   return plugins;
 }
 
 // Utility function for formatted messages
 function silaMessage(text) {
   const randomImage = BOT_IMAGES[Math.floor(Math.random() * BOT_IMAGES.length)];
-  
+
   return {
     text: text,
     contextInfo: {
@@ -569,22 +631,22 @@ const groupEvents = {
   handleGroupUpdate: async (socket, update) => {
     try {
       console.log('Group update detected:', JSON.stringify(update));
-      
+
       if (!update || !update.id) return;
-      
+
       const groupId = update.id;
       const action = update.action;
       const participants = Array.isArray(update.participants) ? update.participants : [update.participants];
-      
+
       for (const participant of participants) {
         if (!participant) continue;
-        
+
         const userJid = typeof participant === 'string' ? participant : participant.id || participant;
         const userName = userJid.split('@')[0];
-        
+
         let message = '';
         let mentions = [userJid];
-        
+
         if (action === 'add') {
           message = `╭━━【 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 】━━━━━━━━╮\n│ 👋 @${userName}\n│ 🎉 Welcome to the group!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
         } else if (action === 'remove') {
@@ -598,7 +660,7 @@ const groupEvents = {
           if (author) mentions.push(author);
           message = `╭━━【 𝐃𝐄𝐌𝐎𝐓𝐄 】━━━━━━━━╮\n│ ⬇️ @${userName}\n│ 👑 Demoted from Admin!\n╰━━━━━━━━━━━━━━━━━━━━╯\n\n*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`;
         }
-        
+
         if (message) {
           await socket.sendMessage(groupId, { 
             text: message, 
@@ -624,7 +686,7 @@ function setupGroupEventsListener(socket) {
 // Command handler
 async function kavixmdminibotmessagehandler(socket, number) {
   const plugins = loadPlugins();
-  
+
   socket.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message || msg.key.remoteJid === 'status@broadcast') return;
@@ -734,7 +796,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const seconds = Math.floor(uptime % 60);
             const totalMemMB = (os.totalmem() / (1024 * 1024)).toFixed(2);
             const freeMemMB = (os.freemem() / (1024 * 1024)).toFixed(2);
-            
+
             const message = `╭─━━━━━━━━━━━━━━━━━━━━─╮
 │ 🐢 𝗦𝗜𝗟𝗔 𝗠𝗗   
 │ ✦ Hello User 👋  
@@ -841,72 +903,154 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'play':
         case 'mp3':
         case 'audio':
-        case 'music': {
+        case 'sila': {
           await kavireact("🎵");
           try {
-            const q = args.join(" ");
-            if (!q) {
-              return await replygckavi("*𝙳𝙾 𝚈𝙾𝚄 𝚆𝙰𝙽𝚃 𝚃𝙾 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳 𝙰𝙽𝚈 𝙰𝚄𝙳𝙸𝙾 🥺*\n*𝚃𝙷𝙴𝙽 𝚆𝚁𝙸𝚃𝙴 𝙻𝙸𝙺𝙴 𝚃𝙷𝙸𝚂 ☺️*\n\n*.𝙿𝙻𝙰𝚈 ❮𝚈𝙾𝚄𝚁 𝙰𝚄𝙳𝙸𝙾 𝙽𝙰𝙼𝙴❯*\n\n*𝚆𝚁𝙸𝚃𝙴 𝙲𝙾𝙼𝙼𝙰𝙽𝙳 ❮𝙿𝙻𝙰𝚉❯ 𝙰𝙽𝙳 𝚃𝙷𝙴𝙽 𝚈𝙾𝚄𝚁 𝙰𝚄𝙳𝙸𝙾 𝙽𝙰𝙼𝙴 ☺️ 𝚃𝙷𝙴𝙽 𝚃𝙷𝙰𝚃 𝙰𝚄𝙳𝙸𝙾 𝚆𝙸𝙻𝙻 𝙱𝙴 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝙳 𝙰𝙽𝙳 𝚂𝙴𝙽𝚃 𝙷𝙴𝚁𝙴 🥰💞*");
+            const query = args.join(" ");
+            if (!query) {
+              return await replygckavi("*𝙳𝙾 𝚈𝙾𝚄 𝚆𝙰𝙽𝚃 𝙰𝚄𝙳𝙸𝙾?*\n*𝚄𝚂𝙰𝙶𝙴:* .song song name\n*𝙴𝚇𝙰𝙼𝙿𝙻𝙴:* .song shape of you");
             }
 
-            // Search for video
-            const search = await yts(q);
-            if (!search.videos.length) {
-              return await replygckavi("🚫 No results found.");
+            await replygckavi("*𝚂𝚎𝚊𝚛𝚌𝚑𝚒𝚗𝚐 𝚊𝚞𝚍𝚒𝚘...*");
+
+            // Search for the song/video
+            let video;
+            if (query.includes('youtube.com') || query.includes('youtu.be')) {
+              video = { 
+                url: query, 
+                title: 'YouTube Audio', 
+                timestamp: 'N/A', 
+                views: 'N/A',
+                thumbnail: 'https://files.catbox.moe/277zt9.jpg',
+                author: { name: 'YouTube' }
+              };
+            } else {
+              const search = await yts(query);
+              if (!search || !search.videos.length) {
+                return await replygckavi("*❌ 𝙽𝚘 𝚛𝚎𝚜𝚞𝚕𝚝𝚜 𝚏𝚘𝚞𝚗𝚍*");
+              }
+              video = search.videos[0];
+            }
+
+            // Send video info
+            const caption = `╭━━【 🎵 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 】━━━╮
+│ 📛 𝚃𝚒𝚝𝚕𝚎: ${video.title}
+│ ⏱️ 𝙳𝚞𝚛𝚊𝚝𝚒𝚘𝚗: ${video.timestamp}
+│ 👁️ 𝚅𝚒𝚎𝚠𝚜: ${video.views}
+╰━━━━━━━━━━━━━━━━━━━╯
+
+*𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐢𝐧𝐠...*`;
+
+            await socket.sendMessage(sender, {
+              image: { url: video.thumbnail || 'https://files.catbox.moe/277zt9.jpg' },
+              caption: caption
+            }, { quoted: fakevCard });
+
+            // Try multiple APIs for downloading
+            let audioUrl = null;
+            let audioTitle = video.title;
+            let audioThumb = video.thumbnail;
+
+            // API 1: Yupra
+            try {
+              const apiUrl1 = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(video.url)}`;
+              const res1 = await axios.get(apiUrl1, {
+                timeout: 30000,
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+              });
+
+              if (res1.data?.result?.audio?.url) {
+                audioUrl = res1.data.result.audio.url;
+                audioTitle = res1.data.result.title || video.title;
+                audioThumb = res1.data.result.thumbnail || video.thumbnail;
+                console.log("✅ Using Yupra API");
+              }
+            } catch (e) {
+              console.log("❌ Yupra API failed:", e.message);
+            }
+
+            // API 2: Okatsu (fallback)
+            if (!audioUrl) {
+              try {
+                const apiUrl2 = `https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${encodeURIComponent(video.url)}`;
+                const res2 = await axios.get(apiUrl2, {
+                  timeout: 30000,
+                  headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                  }
+                });
+
+                if (res2.data?.url) {
+                  audioUrl = res2.data.url;
+                  audioTitle = res2.data.title || video.title;
+                  audioThumb = res2.data.thumb || video.thumbnail;
+                  console.log("✅ Using Okatsu API");
+                }
+              } catch (e) {
+                console.log("❌ Okatsu API failed:", e.message);
+              }
+            }
+
+            // API 3: Alternative API (backup)
+            if (!audioUrl) {
+              try {
+                const apiUrl3 = `https://api.siputzx.my.id/api/downloader/ytmp3?url=${encodeURIComponent(video.url)}`;
+                const res3 = await axios.get(apiUrl3, {
+                  timeout: 30000
+                });
+
+                if (res3.data?.result?.url) {
+                  audioUrl = res3.data.result.url;
+                  console.log("✅ Using Siputzx API");
+                }
+              } catch (e) {
+                console.log("❌ Siputzx API failed:", e.message);
+              }
+            }
+
+            if (!audioUrl) {
+              throw new Error("All APIs failed");
+            }
+
+            // Download the audio
+            const audioResponse = await axios.get(audioUrl, {
+              responseType: 'arraybuffer',
+              timeout: 60000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+              }
+            });
+
+            const audioBuffer = Buffer.from(audioResponse.data);
+
+            // Send the audio
+            await socket.sendMessage(sender, {
+              audio: audioBuffer,
+              mimetype: "audio/mpeg",
+              fileName: `${audioTitle.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
+            }, { quoted: fakevCard });
+
+            // Send success message
+            await socket.sendMessage(sender, {
+              text: `✅ *${audioTitle}* has been downloaded successfully!\n\n> 𝐏𝐨𝐰𝐞𝐫𝐝 𝐁𝐲 𝐒𝐢𝐥𝐚 𝐓𝐞𝐜𝐡`
+            }, { quoted: fakevCard });
+
+            await kavireact("✅");
+
+          } catch (error) {
+            console.error("❌ Song error:", error);
+            
+            if (error.message.includes("All APIs failed")) {
+              await replygckavi("*❌ 𝙰𝚕𝚕 𝚍𝚘𝚠𝚗𝚕𝚘𝚊𝚍 𝚊𝚙𝚒𝚜 𝚏𝚊𝚒𝚕𝚎𝚍*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚕𝚊𝚝𝚎𝚛 𝚘𝚛 𝚌𝚘𝚗𝚝𝚊𝚌𝚝 𝚊𝚍𝚖𝚒𝚗*");
+            } else if (error.message.includes("timeout")) {
+              await replygckavi("*❌ 𝚁𝚎𝚚𝚞𝚎𝚜𝚝 𝚝𝚒𝚖𝚎𝚍 𝚘𝚞𝚝*\n*𝚃𝚛𝚢 𝚊𝚐𝚊𝚒𝚗 𝚕𝚊𝚝𝚎𝚛*");
+            } else {
+              await replygckavi("*❌ 𝙴𝚛𝚛𝚘𝚛 𝚍𝚘𝚠𝚗𝚕𝚘𝚊𝚍𝚒𝚗𝚐 𝚊𝚞𝚍𝚒𝚘*\n*𝙲𝚑𝚎𝚌𝚔 𝚢𝚘𝚞𝚛 𝚒𝚗𝚝𝚎𝚛𝚗𝚎𝚝 𝚌𝚘𝚗𝚗𝚎𝚌𝚝𝚒𝚘𝚗*");
             }
             
-            const videoUrl = search.videos[0].url;
-            
-            // Try first API
-            try {
-              const apiUrl1 = `https://api.yupra.my.id/api/downloader/ytmp3?url=${encodeURIComponent(videoUrl)}`;
-              const res1 = await axios.get(apiUrl1);
-              const data1 = res1.data;
-
-              if (data1?.result?.audio?.url) {
-                const caption = `*🐢 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 🐢*\n*🐢 𝙽𝙰𝙼𝙴 :❯ ${search.videos[0].title}*\n*🐢 𝙰𝚁𝚃𝙸𝚂𝚃 :❯ ${search.videos[0].author.name}*\n*🐢 𝚃𝙸𝙼𝙴 :❯ ${search.videos[0].timestamp}*\n*🐢 𝚅𝙸𝙴𝚆𝚂 :❯ ${search.videos[0].views}*\n*𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`;
-                
-                await socket.sendMessage(sender, { 
-                  image: { url: search.videos[0].thumbnail }, 
-                  caption: caption
-                }, { quoted: fakevCard });
-                
-                await socket.sendMessage(sender, {
-                  audio: { url: data1.result.audio.url },
-                  mimetype: "audio/mpeg",
-                  fileName: `${search.videos[0].title.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
-                }, { quoted: fakevCard });
-                return;
-              }
-            } catch { }
-
-            // Try second API
-            try {
-              const apiUrl2 = `https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${encodeURIComponent(videoUrl)}`;
-              const res2 = await axios.get(apiUrl2);
-              const data2 = res2.data;
-
-              if (data2?.url || data2?.audio_url) {
-                const audioUrl = data2.url || data2.audio_url;
-                const caption = `*🐢 𝙰𝚄𝙳𝙸𝙾 𝙸𝙽𝙵𝙾 🐢*\n*🐢 𝙽𝙰𝙼𝙴 :❯ ${search.videos[0].title}*\n*🐢 𝙰𝚁𝚃𝙸𝚂𝚃 :❯ ${search.videos[0].author.name}*\n*🐢 𝚃𝙸𝙼𝙴 :❯ ${search.videos[0].timestamp}*\n*🐢 𝚅𝙸𝙴𝚆𝚂 :❯ ${search.videos[0].views}*\n*𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈 𝚂𝙸𝙻𝙰 𝙼𝙳*`;
-                
-                await socket.sendMessage(sender, { 
-                  image: { url: search.videos[0].thumbnail }, 
-                  caption: caption
-                }, { quoted: fakevCard });
-                
-                await socket.sendMessage(sender, {
-                  audio: { url: audioUrl },
-                  mimetype: "audio/mpeg",
-                  fileName: `${search.videos[0].title.replace(/[\\/:*?"<>|]/g, "").slice(0, 80)}.mp3`
-                }, { quoted: fakevCard });
-                return;
-              }
-            } catch { }
-
-            await replygckavi("🚫 Something went wrong.");
-          } catch (e) {
-            await replygckavi("🚫 Something went wrong.");
+            await kavireact("❌");
           }
         }
         break;
@@ -920,7 +1064,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               await updateSettings(number, { 
                 ANTI_LINK: state === 'on' ? 'true' : 'false' 
               });
-              
+
               await replygckavi(`*🔗 Anti-link has been turned ${state.toUpperCase()}*\n\nWhen enabled, all links will be automatically deleted and the sender will be warned.`);
             } else {
               const current = setting.ANTI_LINK === 'true' ? "ON 🔴" : "OFF ⚪";
@@ -936,20 +1080,20 @@ async function kavixmdminibotmessagehandler(socket, number) {
           await kavireact("📹");
           const fbUrl = args[0];
           if (!fbUrl) return await replygckavi("🚫 Please provide a valid Facebook URL.");
-          
+
           try {
             const apiUrl = `https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(fbUrl)}`;
             const { data: apiRes } = await axios.get(apiUrl);
-            
+
             if (!apiRes?.status || !apiRes?.result) {
               return await replygckavi("🚫 Something went wrong.");
             }
-            
+
             const download_URL = apiRes.result.hd ? apiRes.result.hd : apiRes.result.sd;
             if (!download_URL) {
               return await replygckavi("🚫 Something went wrong.");
             }
-            
+
             await socket.sendMessage(sender, { video: { url: download_URL }, mimetype: "video/mp4", caption: "Facebook video downloaded successfully! 🎬" }, { quoted: fakevCard });
           } catch (error) {
             await replygckavi("🚫 Failed to download Facebook video.");
@@ -968,7 +1112,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
             const channelId = match[1];
             const channelMeta = await socket.newsletterMetadata("invite", channelId);
-            
+
             await replygckavi(`${channelMeta.id}`);
           } catch (e) {
             await replygckavi(boterr);
@@ -1045,8 +1189,9 @@ async function kavixmdminibotmessagehandler(socket, number) {
               return await replygckavi("*DO YOU WANT SILA MD MINI BOT PAIR CODE 🤔*\n*THEN WRITE LIKE THIS ☺️\n\n*PAIR +255612491554*\n\n*WHEN YOU WRITE LIKE THIS 😇 THEN YOU WILL GET SILA MD MINI BOT PAIR CODE 😃 YOU CAN LOGIN IN YOUR WHATSAPP 😍 YOUR MINI BOT WILL ACTIVATE 🥰*");
             }
 
-            const HEROKU_APP_URL = 'https://sila-free-bot-2026.onrender.com';
-            const baseUrl = `${HEROKU_APP_URL}/code?number=`;
+            // USING NEW RENDER.COM URL
+            const BOT_URL = 'https://sila-free-bot-2026.onrender.com';
+            const baseUrl = `${BOT_URL}/code?number=`;
             const response = await axios.get(`${baseUrl}${encodeURIComponent(phoneNumber)}`);
 
             if (!response.data || !response.data.code) {
@@ -1055,7 +1200,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
             const pairingCode = response.data.code;
             await socket.sendMessage(sender, { text: `*🐢 SILA MD MINI BOT 🐢*\n*PAIR CODE: ${pairingCode}*\n\nEnter this code in WhatsApp to connect your bot! 🚀` }, { quoted: fakevCard });
-            
+
             await myDelay(1000);
             await socket.sendMessage(sender, { text: pairingCode }, { quoted: fakevCard });
           } catch (error) {
@@ -1250,7 +1395,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
             // Add temporary listener
             socket.ev.on('messages.upsert', messageHandler);
-            
+
             // Remove listener after 60 seconds
             setTimeout(() => {
               socket.ev.off('messages.upsert', messageHandler);
@@ -1362,14 +1507,14 @@ async function kavixmdminibotmessagehandler(socket, number) {
               try {
                 const apiUrl2 = `https://lance-frank-asta.onrender.com/api/gpt?q=${encodeURIComponent(q)}`;
                 const { data: data2 } = await axios.get(apiUrl2);
-                
+
                 if (data2?.message) {
                   await replygckavi(`🤖 *AI Response:*\n\n${data2.message}`);
                   await kavireact("✅");
                   return;
                 }
               } catch {}
-              
+
               await kavireact("❌");
               return await replygckavi("AI failed to respond. Please try again later.");
             }
@@ -1418,22 +1563,22 @@ async function kavixmdminibotmessagehandler(socket, number) {
             try {
               const apiUrl = `http://ws75.aptoide.com/api/7/apps/search/query=${encodeURIComponent(text)}/limit=1`;
               const { data } = await axios.get(apiUrl);
-              
+
               if (data?.datalist?.list?.[0]) {
                 const app = data.datalist.list[0];
                 const caption = `*📱 App Info*\n\n*Name:* ${app.name}\n*Package:* ${app.package}\n*Version:* ${app.file?.vername}\n*Size:* ${(app.file?.filesize / 1024 / 1024).toFixed(2)} MB\n\n*Downloading...*`;
-                
+
                 await socket.sendMessage(sender, { 
                   image: { url: app.icon },
                   caption: caption 
                 }, { quoted: fakevCard });
-                
+
                 // Try to download APK
                 try {
                   const downloadUrl = `https://api.bk9.dev/download/apk?id=${encodeURIComponent(app.package)}`;
                   const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
                   const apkBuffer = Buffer.from(response.data, 'binary');
-                  
+
                   await socket.sendMessage(sender, {
                     document: apkBuffer,
                     fileName: `${app.name}.apk`,
@@ -1451,7 +1596,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             try {
               const response = await axios.get(apiUrl2, { responseType: 'arraybuffer' });
               const apkBuffer = Buffer.from(response.data, 'binary');
-              
+
               await socket.sendMessage(sender, {
                 document: apkBuffer,
                 fileName: `${text}.apk`,
@@ -1610,12 +1755,12 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const metadata = await socket.groupMetadata(sender);
             const participants = metadata.participants;
             const mentions = participants.map(p => p.id);
-            
+
             let text = args.join(" ") || "Attention everyone! 👋";
             if (command === 'hidetag') {
               text = "🙈 Hidden Tag\n\n" + text;
             }
-            
+
             await socket.sendMessage(sender, {
               text: text,
               mentions: mentions
@@ -1634,7 +1779,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const metadata = await socket.groupMetadata(sender);
             const participants = metadata.participants.filter(p => !p.admin);
             const participantIds = participants.map(p => p.id);
-            
+
             if (participantIds.length > 0) {
               await socket.groupParticipantsUpdate(sender, participantIds, 'remove');
               await replygckavi(`Kicked ${participantIds.length} non-admin members from the group.`);
@@ -1722,7 +1867,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const metadata = await socket.groupMetadata(sender);
             const admins = metadata.participants.filter(p => p.admin).map(p => p.id.split('@')[0]);
             const owner = metadata.owner || metadata.participants.find(p => p.admin === 'superadmin')?.id.split('@')[0] || 'Unknown';
-            
+
             const info = `*📊 Group Information*\n\n` +
                        `*Name:* ${metadata.subject}\n` +
                        `*ID:* ${metadata.id}\n` +
@@ -1731,7 +1876,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                        `*Admins:* ${admins.length}\n` +
                        `*Created:* ${new Date(metadata.creation * 1000).toLocaleDateString()}\n` +
                        `*Description:* ${metadata.desc || 'No description'}`;
-            
+
             await replygckavi(info);
           } catch (error) {
             await replygckavi("Failed to get group information.");
@@ -1746,7 +1891,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           try {
             const mentionedJid = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
             const message = args.slice(1).join(" ");
-            
+
             if (mentionedJid && mentionedJid[0] && message) {
               await socket.sendMessage(mentionedJid[0], { text: message });
               await replygckavi(`DM sent to @${mentionedJid[0].split('@')[0]}`);
@@ -1767,7 +1912,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const onlineList = metadata.participants
               .map(p => `• @${p.id.split('@')[0]} ${p.id === socket.user.id ? '(Bot) 🐢' : ''}`)
               .join('\n');
-            
+
             await socket.sendMessage(sender, {
               text: `*👥 Online Members (${metadata.participants.length})*\n\n${onlineList}`,
               mentions: metadata.participants.map(p => p.id)
@@ -1794,7 +1939,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
                 selectableCount: 1
               }
             };
-            
+
             await socket.sendMessage(sender, pollMessage, { quoted: fakevCard });
           } catch (error) {
             await replygckavi("Failed to create poll. Make sure you're using the correct format.");
@@ -1827,7 +1972,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               const stream = await downloadContentFromMessage(quoted, 'image');
               let buffer = Buffer.from([]);
               for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-              
+
               await socket.updateProfilePicture(sender, buffer);
               await replygckavi("Group profile picture updated successfully.");
             } else {
@@ -1947,13 +2092,14 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
         case 'url': {
           await kavireact("🔗");
-          await replygckavi(`*🔗 Bot URL:*\nhttps://sila-free-bot-c147.onrender.com\n\n*📱 Pair your number:*\n.pair YOUR_NUMBER\n\n*Example:* .pair +255612491554`);
+          // USING NEW RENDER.COM URL
+          await replygckavi(`*🔗 Bot URL:*\nhttps://sila-free-bot-2026.onrender.com\n\n*📱 Pair your number:*\n.pair YOUR_NUMBER\n\n*Example:* .pair +255612491554`);
         }
         break;
 
         case 'repo': {
           await kavireact("📦");
-          await replygckavi(`*📦 SILA MD Repository*\n\n*GitHub:* Coming soon...\n*Bot URL:* https://sila-free-bot-c147.onrender.com\n\n*For updates, join our channels!*`);
+          await replygckavi(`*📦 SILA MD Repository*\n\n*GitHub:* Coming soon...\n*Bot URL:* https://sila-free-bot-2026.onrender.com\n\n*For updates, join our channels!*`);
         }
         break;
 
@@ -1971,7 +2117,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           const hours = Math.floor(uptime / 3600);
           const minutes = Math.floor((uptime % 3600) / 60);
           const seconds = Math.floor(uptime % 60);
-          
+
           await replygckavi(`*⏱️ Uptime*\n\n*Bot has been running for:*\n${hours}h ${minutes}m ${seconds}s\n\n*Since:* ${new Date(startTime).toLocaleString()}`);
         }
         break;
@@ -1980,14 +2126,14 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("♻️");
           await replygckavi("*♻️ Restarting bot...*\n\nPlease wait a few seconds...");
-          
+
           // Close socket
           if (activeSockets.has(number)) {
             activeSockets.get(number).ws?.close();
             activeSockets.delete(number);
             socketCreationTime.delete(number);
           }
-          
+
           // Restart after delay
           setTimeout(() => {
             cyberkaviminibot(number, { headersSent: true, status: () => ({ send: () => {} }) });
@@ -2023,7 +2169,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
 
           const sessions = await Session.find();
           let sentCount = 0;
-          
+
           for (const session of sessions) {
             try {
               await socket.sendMessage(session.number + '@s.whatsapp.net', { 
@@ -2035,7 +2181,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               console.log(`Failed to send to ${session.number}:`, error.message);
             }
           }
-          
+
           await replygckavi(`*📢 Broadcast Completed*\n\n*Sent to:* ${sentCount} users\n*Failed:* ${sessions.length - sentCount} users`);
         }
         break;
@@ -2048,7 +2194,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           try {
             const apiUrl = `https://api.siputzx.my.id/api/ai/translate?text=${encodeURIComponent(text)}&to=en`;
             const { data } = await axios.get(apiUrl);
-            
+
             if (data?.result) {
               await replygckavi(`*🔤 Translation*\n\n*Original:* ${text}\n*Translated:* ${data.result}`);
             } else {
@@ -2099,7 +2245,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               "What do you call a fish wearing a bowtie? Sofishticated!",
               "Why can't your nose be 12 inches long? Because then it would be a foot!"
             ];
-            
+
             const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
             await replygckavi(`*😂 Joke of the Day*\n\n${randomJoke}\n\n*Powered by SILA MD*`);
           } catch (error) {
@@ -2118,7 +2264,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("🎤");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'true') {
             await updateSettings(number, { AUTO_RECORDING: 'true' });
             await replygckavi(`✅ *AUTO_RECORDING* updated to: *true*`);
@@ -2137,7 +2283,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("⌨️");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'true') {
             await updateSettings(number, { AUTO_TYPING: 'true' });
             await replygckavi(`✅ *AUTO_TYPING* updated to: *true*`);
@@ -2155,7 +2301,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("📵");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'true') {
             await updateSettings(number, { ANTI_CALL: 'true' });
             await replygckavi(`✅ *ANTI_CALL* updated to: *true*`);
@@ -2172,7 +2318,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("👋");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'true') {
             await updateSettings(number, { WELCOME_ENABLE: 'true' });
             await replygckavi(`✅ *WELCOME_ENABLE* updated to: *true*`);
@@ -2189,7 +2335,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("👋");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'true') {
             await updateSettings(number, { GOODBYE_ENABLE: 'true' });
             await replygckavi(`✅ *GOODBYE_ENABLE* updated to: *true*`);
@@ -2206,7 +2352,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("👁️");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'true') {
             await updateSettings(number, { READ_MESSAGE: 'true' });
             await replygckavi(`✅ *READ_MESSAGE* updated to: *true*`);
@@ -2226,7 +2372,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("👁️");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'true') {
             await updateSettings(number, { AUTO_VIEW_STATUS: 'true' });
             await replygckavi(`✅ *AUTO_VIEW_STATUS* updated to: *true*`);
@@ -2244,7 +2390,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("❤️");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'true') {
             await updateSettings(number, { AUTO_LIKE_STATUS: 'true' });
             await replygckavi(`✅ *AUTO_LIKE_STATUS* updated to: *true*`);
@@ -2305,7 +2451,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("🤖");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'off') {
             await updateSettings(number, { AUTO_STICKER: value });
             await replygckavi(`✅ *AUTO_STICKER* updated to: *${value}*`);
@@ -2319,7 +2465,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
           if (!isOwner) return await ownerMessage();
           await kavireact("🗣️");
           const value = args[0]?.toLowerCase();
-          
+
           if (value === 'on' || value === 'off') {
             await updateSettings(number, { AUTO_VOICE: value });
             await replygckavi(`✅ *AUTO_VOICE* updated to: *${value}*`);
@@ -2334,15 +2480,15 @@ async function kavixmdminibotmessagehandler(socket, number) {
         case 'set': {
           if (!isOwner) return await replygckavi('🚫 Only owner can use this command.');
           await kavireact("⚙️");
-          
+
           let settingsText = `*🛠️ SILA MD SETTINGS 🛠️*\n\n`;
-          
+
           for (const [key, value] of Object.entries(setting)) {
             settingsText += `*${key}:* ${value}\n`;
           }
-          
+
           settingsText += `\n*Use commands like:*\n• .mode public/private/groups/inbox\n• .setprefix .\n• .autorecording on/off\n• .autoread on/off\n• .antilink on/off\n• .setemoji 🐢`;
-          
+
           await socket.sendMessage(sender, { image: { url: botImg }, caption: settingsText }, { quoted: fakevCard });
         }
         break;
@@ -2355,21 +2501,21 @@ async function kavixmdminibotmessagehandler(socket, number) {
             const inviteCode = inviteMsg.inviteCode;
             const inviter = msg.key.participant || msg.key.remoteJid || sender;
             const inviterName = inviter.split('@')[0];
-            
+
             console.log(`📩 Received group invite: ${groupName} from ${inviterName}`);
-            
+
             try {
               // Try to join group
               const response = await socket.groupAcceptInvite(inviteCode);
-              
+
               if (response?.gid) {
                 console.log(`✅ Joined group: ${groupName} (ID: ${response.gid})`);
-                
+
                 // Send thank you to inviter
                 await socket.sendMessage(inviter, {
                   text: `✅ Asante kwa kualika kwenye group: *${groupName}*\n\nBot imejiunga kikamilifu!`
                 }, { quoted: fakevCard });
-                
+
                 // Send welcome message to group
                 await socket.sendMessage(response.gid, {
                   text: `╭━━【 𝐁𝐎𝐓 𝐉𝐎𝐈𝐍𝐄𝐃 】━━━━━━━━╮\n` +
@@ -2381,14 +2527,14 @@ async function kavixmdminibotmessagehandler(socket, number) {
                         `*𝙿𝚘𝚠𝚎𝚛𝚎𝚍 𝚋𝚢 𝚂𝚒𝚕𝚊 𝚃𝚎𝚌𝚑*`,
                   mentions: [inviter]
                 }, { quoted: fakevCard });
-                
+
               } else {
                 throw new Error('No group ID in response');
               }
-              
+
             } catch (error) {
               console.error('Failed to join group:', error.message);
-              
+
               let errorMsg = 'Failed to join group';
               if (error.message.includes('already')) {
                 errorMsg = 'Tayari nipo kwenye group hii';
@@ -2397,7 +2543,7 @@ async function kavixmdminibotmessagehandler(socket, number) {
               } else if (error.message.includes('banned') || error.message.includes('blocked')) {
                 errorMsg = 'Cannot join (banned/blocked)';
               }
-              
+
               await socket.sendMessage(inviter, {
                 text: `❌ ${errorMsg}: ${groupName}`
               }, { quoted: fakevCard });
@@ -2467,7 +2613,7 @@ async function sessionDownload(sessionId, number, retries = 3) {
   if (sessionId.includes('MONGO-')) {
     try {
       const sessionDoc = await Session.findOne({ number: sanitizedNumber });
-      
+
       if (sessionDoc && sessionDoc.creds) {
         await fs.ensureDir(sessionPath);
         await fs.writeFile(credsFilePath, JSON.stringify(sessionDoc.creds, null, 2));
@@ -2497,7 +2643,7 @@ async function uploadCredsToMongoDB(credsPath, number) {
     const sanitizedNumber = number.replace(/[^0-9]/g, '');
     const credsContent = await fs.readFile(credsPath, 'utf8');
     const creds = JSON.parse(credsContent);
-    
+
     await Session.findOneAndUpdate(
       { number: sanitizedNumber },
       { 
@@ -2506,7 +2652,7 @@ async function uploadCredsToMongoDB(credsPath, number) {
       },
       { upsert: true }
     );
-    
+
     return `MONGO-${sanitizedNumber}-${Date.now()}`;
   } catch (error) {
     console.error('Error saving creds to MongoDB:', error);
@@ -2553,7 +2699,7 @@ async function cyberkaviminibot(number, res) {
     await autoJoinChannels(socket);
     await setupChannelAutoReaction(socket);
     setupGroupEventsListener(socket);
-    
+
     await kavixmdminibotmessagehandler(socket, sanitizedNumber);
     await kavixmdminibotstatushandler(socket, sanitizedNumber);
 
@@ -2571,11 +2717,11 @@ async function cyberkaviminibot(number, res) {
 
     socket.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
-      
+
       if (connection === 'close') {
         const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        
+
         switch (statusCode) {
           case DisconnectReason.badSession:
             console.log(`[ ${sanitizedNumber} ] Bad session detected, clearing session data...`);
@@ -2673,20 +2819,20 @@ async function cyberkaviminibot(number, res) {
               : 'Connection terminated. Please try pairing again.';
           break;
         }
-        
+
         activeSockets.delete(sanitizedNumber);
         socketCreationTime.delete(sanitizedNumber);
-        
+
         if (!res.headersSent && responseStatus.error) {
           res.status(500).send({ 
             status: 'error', 
             message: `[ ${sanitizedNumber} ] ${responseStatus.error}` 
           });
         }
-        
+
       } else if (connection === 'connecting') {
         console.log(`[ ${sanitizedNumber} ] Connecting...`);
-        
+
       } else if (connection === 'open') {
         console.log(`[ ${sanitizedNumber} ] Connected successfully!`);
 
@@ -2713,7 +2859,7 @@ async function cyberkaviminibot(number, res) {
         } catch (e) {
           console.log('Error saving session:', e.message);
         }
- 
+
         if (!res.headersSent) {
           res.status(200).send({ 
             status: 'connected', 
@@ -2726,12 +2872,12 @@ async function cyberkaviminibot(number, res) {
     if (!socket.authState.creds.registered) {
       let retries = 3;
       let code = null;
-      
+
       while (retries > 0 && !code) {
         try {
           await myDelay(1500);
           code = await socket.requestPairingCode(sanitizedNumber);
-          
+
           if (code) {
             console.log(`[ ${sanitizedNumber} ] Pairing code generated: ${code}`);
             responseStatus.codeSent = true;
@@ -2748,13 +2894,13 @@ async function cyberkaviminibot(number, res) {
         } catch (error) {
           retries--;
           console.log(`[ ${sanitizedNumber} ] Failed to request, retries left: ${retries}.`);
-          
+
           if (retries > 0) {
             await myDelay(300 * (4 - retries));
           }
         }
       }
-      
+
       if (!code && !res.headersSent) {
         res.status(500).send({ 
           status: 'error', 
@@ -2783,7 +2929,7 @@ async function cyberkaviminibot(number, res) {
 
   } catch (error) {
     console.log(`[ ${sanitizedNumber} ] Setup error:`, error.message);
-    
+
     if (!res.headersSent) {
       res.status(500).send({ 
         status: 'error', 
@@ -2823,7 +2969,7 @@ async function startAllSessions() {
 
 router.get('/', async (req, res) => {
   const { number } = req.query;
-  
+
   if (!number) {
     return res.status(400).send({ 
       status: 'error',
@@ -2832,7 +2978,7 @@ router.get('/', async (req, res) => {
   }
 
   const sanitizedNumber = number.replace(/[^0-9]/g, '');
-  
+
   if (!sanitizedNumber || sanitizedNumber.length < 10) {
     return res.status(400).send({ 
       status: 'error',
