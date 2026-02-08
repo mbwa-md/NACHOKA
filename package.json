@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@octokit/rest": "^20.0.2",
-    "@whiskeysockets/baileys": "npm:angularsockets",
+    "@whiskeysockets/baileys": "github:/Sila-Md/SILA.git",
     "axios": "^1.11.0",
     "@adiwajshing/keyed-db": "latest",
     "@dark-yasiya/yt-dl.js": "1.0.5",
